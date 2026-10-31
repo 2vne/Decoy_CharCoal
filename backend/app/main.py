@@ -25,7 +25,13 @@ from app.routers import (
     simulate,
     whatif,
     ws,
+    function_intelligence,
+    gateway,
+    failure_intelligence,
+    git_intelligence,
 )
+from app.demo_apps.real_app import router as real_app_router
+from app.demo_apps.decoy_app import router as decoy_app_router
 from app.services.enforcer import rollback_expired_blocks
 from app.services.seed import seed_if_needed
 
@@ -124,6 +130,13 @@ app.include_router(whatif.router, prefix="/api", tags=["What-If Simulator"])
 app.include_router(prediction.router, prefix="/api", tags=["Propagation Prediction"])
 app.include_router(exposure.router, prefix="/api", tags=["Security Exposure Budget"])
 app.include_router(health_correlation.router, prefix="/api", tags=["Health Correlation"])
+app.include_router(function_intelligence.router, prefix="/api", tags=["Function Intelligence"])
+app.include_router(gateway.router, prefix="/api", tags=["Gateway"])
+app.include_router(gateway.router, tags=["Gateway Root"])
+app.include_router(real_app_router)
+app.include_router(decoy_app_router)
+app.include_router(failure_intelligence.router, prefix="/api", tags=["Failure Intelligence"])
+app.include_router(git_intelligence.router, prefix="/api", tags=["Git Intelligence"])
 app.include_router(simulate.router, prefix="/api", tags=["Simulation"])
 app.include_router(ws.router, tags=["WebSocket"])
 

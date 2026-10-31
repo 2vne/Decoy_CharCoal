@@ -65,6 +65,9 @@ class Attacker(Base):
     intent_evidence: Mapped[List[str]] = mapped_column(sa.JSON, default=list)
     is_anomaly: Mapped[bool] = mapped_column(sa.Boolean, default=False)
     anomaly_score: Mapped[Optional[float]] = mapped_column(sa.Float, nullable=True)
+    targeted_functions: Mapped[List[str]] = mapped_column(sa.JSON, default=list)
+    function_risk_score: Mapped[float] = mapped_column(sa.Float, default=0.0)
+    function_risk_breakdown: Mapped[Dict[str, Any]] = mapped_column(sa.JSON, default=dict)
 
 
 class Relationship(Base):
@@ -238,4 +241,78 @@ class MetricSnapshot(Base):
     blocks_count: Mapped[int] = mapped_column(sa.Integer, default=0)
     alerts_suppressed: Mapped[int] = mapped_column(sa.Integer, default=0)
     band_counts: Mapped[Dict[str, int]] = mapped_column(sa.JSON, default=lambda: {"low": 0, "medium": 0, "high": 0, "critical": 0})
+
+
+class FunctionTargetEvent(Base):
+    __tablename__ = "function_target_events"
+
+    id: Mapped[int] = mapped_column(sa.Integer, primary_key=True, autoincrement=True)
+    attacker_id: Mapped[int] = mapped_column(sa.Integer, sa.ForeignKey("attackers.id"), index=True)
+    src_ip: Mapped[str] = mapped_column(sa.String(64), index=True)
+    target_function: Mapped[str] = mapped_column(sa.String(64), index=True)
+    target_endpoint: Mapped[str] = mapped_column(sa.String(256), default="")
+    attack_type: Mapped[str] = mapped_column(sa.String(64), default="probe")
+    severity: Mapped[str] = mapped_column(sa.String(32), default="medium")
+    result: Mapped[str] = mapped_column(sa.String(32), default="intercepted")
+    attempts: Mapped[int] = mapped_column(sa.Integer, default=1)
+    honeypot_source: Mapped[str] = mapped_column(sa.String(64), default="gateway")
+    evidence: Mapped[str] = mapped_column(sa.Text, default="")
+    confidence: Mapped[float] = mapped_column(sa.Float, default=1.0)
+    is_simulated: Mapped[bool] = mapped_column(sa.Boolean, default=False, index=True)
+    timestamp: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), default=utc_now)
+
+
+class GatewayRequestLog(Base):
+    __tablename__ = "gateway_request_logs"
+
+    id: Mapped[int] = mapped_column(sa.Integer, primary_key=True, autoincrement=True)
+    src_ip: Mapped[str] = mapped_column(sa.String(64), index=True)
+    method: Mapped[str] = mapped_column(sa.String(16), default="GET")
+    path: Mapped[str] = mapped_column(sa.String(256), index=True)
+    routed_to: Mapped[str] = mapped_column(sa.String(32), index=True)  # real, decoy, challenge, blocked
+    risk_score: Mapped[float] = mapped_column(sa.Float, default=0.0)
+    decision_reason: Mapped[str] = mapped_column(sa.Text, default="")
+    status_code: Mapped[int] = mapped_column(sa.Integer, default=200)
+    response_time_ms: Mapped[float] = mapped_column(sa.Float, default=0.0)
+    timestamp: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), default=utc_now, index=True)
+
+
+class GatewayIncident(Base):
+    __tablename__ = "gateway_incidents"
+
+    id: Mapped[int] = mapped_column(sa.Integer, primary_key=True, autoincrement=True)
+    incident_uuid: Mapped[str] = mapped_column(sa.String(64), unique=True, index=True)
+    endpoint: Mapped[str] = mapped_column(sa.String(256), index=True)
+    status: Mapped[str] = mapped_column(sa.String(32), default="active")  # active, mitigated, resolved, investigating
+    severity: Mapped[str] = mapped_column(sa.String(16), default="high")  # low, medium, high, critical
+    error_code: Mapped[int] = mapped_column(sa.Integer, default=502)
+    first_failure_ts: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), default=utc_now)
+    detection_ts: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), default=utc_now)
+    last_failure_ts: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), default=utc_now)
+    recovery_ts: Mapped[Optional[datetime]] = mapped_column(sa.DateTime(timezone=True), nullable=True)
+    recurrence_count: Mapped[int] = mapped_column(sa.Integer, default=1)
+    related_attacker_ip: Mapped[Optional[str]] = mapped_column(sa.String(64), nullable=True)
+    related_function: Mapped[Optional[str]] = mapped_column(sa.String(64), nullable=True)
+    error_details: Mapped[str] = mapped_column(sa.Text, default="")
+    evidence: Mapped[Dict[str, Any]] = mapped_column(sa.JSON, default=dict)
+    ai_investigation: Mapped[Optional[Dict[str, Any]]] = mapped_column(sa.JSON, nullable=True)
+
+
+class CommitAttribution(Base):
+    __tablename__ = "commit_attributions"
+
+    id: Mapped[int] = mapped_column(sa.Integer, primary_key=True, autoincrement=True)
+    incident_id: Mapped[Optional[int]] = mapped_column(sa.Integer, sa.ForeignKey("gateway_incidents.id"), nullable=True)
+    commit_hash: Mapped[str] = mapped_column(sa.String(64), index=True)
+    author_name: Mapped[str] = mapped_column(sa.String(128))
+    author_email: Mapped[str] = mapped_column(sa.String(128))
+    commit_msg: Mapped[str] = mapped_column(sa.Text)
+    commit_ts: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+    changed_files: Mapped[List[str]] = mapped_column(sa.JSON, default=list)
+    related_function: Mapped[str] = mapped_column(sa.String(64), default="")
+    assigned_team: Mapped[str] = mapped_column(sa.String(64), default="backend")  # backend, frontend, database, devops, security, payments
+    confidence: Mapped[float] = mapped_column(sa.Float, default=0.8)
+    correlation_explanation: Mapped[str] = mapped_column(sa.Text, default="")
+
+
 

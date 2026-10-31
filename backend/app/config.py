@@ -38,6 +38,23 @@ class Settings(BaseSettings):
     authority_email: str = "danishsjain@gmail.com"
     frontend_origin: str = "http://localhost:3000"
 
+    # Level-2 Function-Level Attack Intelligence Configuration
+    function_weights: dict = {
+        "auth_login": 10,
+        "auth_otp": 15,
+        "auth_reset": 12,
+        "admin_access": 20,
+        "payment_gateway": 25,
+        "database_api": 25,
+        "secrets_env": 30,
+    }
+    behavioural_windows: List[int] = [30, 60, 300, 900]
+    function_risk_thresholds: dict = {
+        "low": 30.0,
+        "medium": 70.0,
+        "high": 100.0,
+    }
+
     @field_validator("safe_ips", mode="before")
     @classmethod
     def parse_safe_ips(cls, v):

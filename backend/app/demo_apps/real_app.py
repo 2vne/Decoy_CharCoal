@@ -1,0 +1,218 @@
+from __future__ import annotations
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db import get_db
+from app.services.function_intelligence import record_function_targeting
+from app.services.ingest import get_or_create_attacker
+from app.services.gateway import extract_client_ip
+
+router = APIRouter(prefix="/demo/real", tags=["Real Demo Application"])
+
+# In-memory realistic demo database (Isolated dummy data only)
+DEMO_USERS = {
+    "analyst@sentinel.local": {
+        "password": "Password123!",
+        "name": "Sarah Connor",
+        "role": "analyst",
+        "otp_secret": "789123",
+    },
+    "admin@sentinel.local": {
+        "password": "AdminSecure2026!",
+        "name": "John Doe",
+        "role": "admin",
+        "otp_secret": "456789",
+    },
+}
+
+DUMMY_CUSTOMERS = [
+    {"id": "cust_101", "name": "Acme Cyber Dynamics", "plan": "Enterprise", "balance": "$4,200.00"},
+    {"id": "cust_102", "name": "Global Shield Technologies", "plan": "Pro", "balance": "$1,450.00"},
+    {"id": "cust_103", "name": "Apex Cloud Systems", "plan": "Enterprise Plus", "balance": "$12,800.00"},
+]
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class OTPRequest(BaseModel):
+    email: str
+    otp_code: str
+
+
+class PasswordResetRequest(BaseModel):
+    email: str
+
+
+class ChargeRequest(BaseModel):
+    customer_id: str
+    amount: float
+    currency: str = "USD"
+    token: str
+
+
+def _get_caller_ip(request: Request) -> str:
+    remote_addr = request.client.host if request.client else "127.0.0.1"
+    return extract_client_ip(dict(request.headers), remote_addr)
+
+
+@router.post("/auth/login")
+async def real_login(req: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    user = DEMO_USERS.get(req.email)
+    if not user or user["password"] != req.password:
+        ip = _get_caller_ip(request)
+        now = datetime.now(timezone.utc)
+        attacker = await get_or_create_attacker(db, ip, now)
+        await record_function_targeting(
+            db=db,
+            attacker=attacker,
+            target_function="auth_login",
+            target_endpoint="/auth/login",
+            attack_type="credential_probe",
+            severity="medium",
+            result="auth_failed",
+            attempts=1,
+            honeypot_source="real_app_telemetry",
+            evidence=f"[Observed] Failed login attempt with email: {req.email[:4]}***",
+            confidence=1.0,
+            is_simulated=False,
+            event_timestamp=now,
+        )
+        await db.commit()
+        raise HTTPException(status_code=401, detail="Invalid email or password.")
+
+    return {
+        "status": "authenticated",
+        "session_token": f"real_sess_{req.email.split('@')[0]}_9921",
+        "requires_otp": True,
+        "message": "Primary credentials valid. Please enter your 6-digit OTP token.",
+    }
+
+
+@router.post("/auth/otp/verify")
+async def real_otp_verify(req: OTPRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    user = DEMO_USERS.get(req.email)
+    if not user or user["otp_secret"] != req.otp_code:
+        ip = _get_caller_ip(request)
+        now = datetime.now(timezone.utc)
+        attacker = await get_or_create_attacker(db, ip, now)
+        await record_function_targeting(
+            db=db,
+            attacker=attacker,
+            target_function="auth_otp",
+            target_endpoint="/auth/otp/verify",
+            attack_type="otp_bruteforce",
+            severity="high",
+            result="otp_failed",
+            attempts=1,
+            honeypot_source="real_app_telemetry",
+            evidence=f"[Observed] Failed OTP verification attempt with token: {req.otp_code}",
+            confidence=1.0,
+            is_simulated=False,
+            event_timestamp=now,
+        )
+        await db.commit()
+        raise HTTPException(status_code=401, detail="Invalid OTP authentication code.")
+
+    return {
+        "status": "authorized",
+        "role": user["role"],
+        "user": user["name"],
+        "app_scope": "production_demo_gateway",
+    }
+
+
+@router.post("/auth/password/reset")
+async def real_password_reset(req: PasswordResetRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    if req.email not in DEMO_USERS:
+        ip = _get_caller_ip(request)
+        now = datetime.now(timezone.utc)
+        attacker = await get_or_create_attacker(db, ip, now)
+        await record_function_targeting(
+            db=db,
+            attacker=attacker,
+            target_function="auth_reset",
+            target_endpoint="/auth/password/reset",
+            attack_type="account_enumeration",
+            severity="medium",
+            result="reset_probed",
+            attempts=1,
+            honeypot_source="real_app_telemetry",
+            evidence=f"[Observed] Account enumeration probe via password reset for {req.email}",
+            confidence=0.90,
+            is_simulated=False,
+            event_timestamp=now,
+        )
+        await db.commit()
+        return {"status": "queued", "message": "If the account exists, a recovery token has been dispatched."}
+
+    return {"status": "sent", "message": f"Password reset instructions dispatched to {req.email}."}
+
+
+@router.get("/user/dashboard")
+async def real_user_dashboard():
+    return {
+        "app": "SENTINEL Production Portal",
+        "environment": "real_workload",
+        "total_active_sessions": 42,
+        "system_status": "operational",
+        "active_tenants": len(DUMMY_CUSTOMERS),
+    }
+
+
+@router.get("/admin/system")
+async def real_admin_system(request: Request, db: AsyncSession = Depends(get_db)):
+    auth_header = request.headers.get("Authorization", "")
+    if "admin" not in auth_header:
+        ip = _get_caller_ip(request)
+        now = datetime.now(timezone.utc)
+        attacker = await get_or_create_attacker(db, ip, now)
+        await record_function_targeting(
+            db=db,
+            attacker=attacker,
+            target_function="admin_access",
+            target_endpoint="/admin/system",
+            attack_type="privilege_escalation",
+            severity="critical",
+            result="forbidden_probe",
+            attempts=1,
+            honeypot_source="real_app_telemetry",
+            evidence="[Observed] Unauthorized access probe on administrative system console",
+            confidence=1.0,
+            is_simulated=False,
+            event_timestamp=now,
+        )
+        await db.commit()
+        raise HTTPException(status_code=403, detail="Forbidden: Admin role authorization token required.")
+
+    return {
+        "admin_portal": "Production Infrastructure Console",
+        "cluster_nodes": 4,
+        "service_health": "100%",
+        "maintenance_mode": False,
+    }
+
+
+@router.post("/checkout/charge")
+async def real_charge(req: ChargeRequest):
+    if req.amount <= 0:
+        raise HTTPException(status_code=400, detail="Invalid charge amount.")
+    return {
+        "charge_id": f"ch_real_{req.customer_id}_8819",
+        "amount": req.amount,
+        "currency": req.currency,
+        "status": "succeeded",
+        "receipt_url": f"https://real.sentinel.internal/receipts/ch_real_{req.customer_id}",
+    }
+
+
+@router.get("/customers")
+async def real_customers():
+    return {"customers": DUMMY_CUSTOMERS, "count": len(DUMMY_CUSTOMERS)}
+
+

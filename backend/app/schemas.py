@@ -248,9 +248,45 @@ class MetricsOut(BaseModel):
     top_attack_types: List[Dict[str, Any]]
     last_20_ttd: List[float] = Field(default_factory=list)
     last_20_ttr: List[float] = Field(default_factory=list)
+    severity_metrics: Optional[Dict[str, Any]] = None
 
 
 class WSMessage(BaseModel):
     type: str
     payload: Dict[str, Any]
+
+
+class FunctionTargetEventIn(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    src_ip: str
+    target_function: str
+    target_endpoint: Optional[str] = ""
+    attack_type: Optional[str] = "probe"
+    severity: Optional[str] = "medium"
+    result: Optional[str] = "intercepted"
+    attempts: Optional[int] = 1
+    honeypot_source: Optional[str] = "gateway"
+    evidence: Optional[str] = ""
+    confidence: Optional[float] = 1.0
+    is_simulated: Optional[bool] = False
+    timestamp: Optional[datetime] = None
+
+
+class FunctionTargetEventOut(BaseModel):
+    id: int
+    attacker_id: int
+    src_ip: str
+    target_function: str
+    target_endpoint: str
+    attack_type: str
+    severity: str
+    result: str
+    attempts: int
+    honeypot_source: str
+    evidence: str
+    confidence: float = 1.0
+    is_simulated: bool = False
+    timestamp: Optional[str] = None
+
 

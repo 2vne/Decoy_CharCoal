@@ -11,6 +11,9 @@ import Honeypots from './pages/Honeypots';
 import IncidentsPage from './pages/IncidentsPage';
 import ResponseCenterPage from './pages/ResponseCenterPage';
 import ReportsPage from './pages/ReportsPage';
+import FunctionIntelligencePage from './pages/FunctionIntelligencePage';
+import GatewayPage from './pages/GatewayPage';
+import GatewayFailuresPage from './pages/GatewayFailuresPage';
 
 export default function App() {
   return (
@@ -20,7 +23,10 @@ export default function App() {
           <Route path="/" element={<Layout />}>
             <Route index element={<Overview />} />
             <Route path="events" element={<LiveEvents />} />
+            <Route path="gateway" element={<GatewayPage />} />
             <Route path="attackers" element={<AttackersPage />} />
+            <Route path="functions" element={<FunctionIntelligencePage />} />
+            <Route path="failures" element={<GatewayFailuresPage />} />
             <Route path="universe" element={<UniversePage />} />
             <Route path="relationships" element={<RelationshipsPage />} />
             <Route path="honeypots" element={<Honeypots />} />

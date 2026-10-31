@@ -20,6 +20,8 @@ import {
   AlertOctagon,
   X,
   Info,
+  GitBranch,
+  Flame,
 } from 'lucide-react';
 import { useSoc } from '../context/SocContext';
 import AttackerInvestigation from './AttackerInvestigation';
@@ -49,6 +51,9 @@ export default function Layout() {
     { label: 'Overview', to: '/', icon: Activity },
     { label: 'Live Events', to: '/events', icon: Radio },
     { label: 'Attackers', to: '/attackers', icon: ShieldAlert },
+    { label: 'Function Intel', to: '/functions', icon: Zap },
+    { label: 'Deception Gateway', to: '/gateway', icon: GitBranch },
+    { label: 'Gateway Failures', to: '/failures', icon: Flame },
     { label: 'Threat Universe', to: '/universe', icon: Globe },
     { label: 'Relationship Graph', to: '/relationships', icon: Share2 },
     { label: 'Honeypots', to: '/honeypots', icon: Server },

@@ -20,6 +20,7 @@ from app.services.killchain import update_killchain_for_attacker
 from app.services.mitre import update_mitre_for_attacker
 from app.services.normalise import normalise_event
 from app.services.risk import compute_risk
+from app.services.function_intelligence import map_event_to_function, record_function_targeting
 
 logger = logging.getLogger(__name__)
 
@@ -187,6 +188,33 @@ async def ingest_event(db: AsyncSession, event_in: EventIn) -> Dict[str, Any]:
     )
     db.add(event_obj)
     await db.flush()
+
+    # 6.1 Level-2 Function-Level Attack Intelligence Mapping
+    mapped_target = map_event_to_function(
+        event_type=event_type,
+        command=command,
+        url=url,
+        dst_port=event_in.dst_port,
+        honeypot=honeypot,
+        raw=raw_dict,
+    )
+    if mapped_target:
+        fn_key, fn_endpoint, fn_evidence, fn_confidence, fn_is_inferred = mapped_target
+        await record_function_targeting(
+            db=db,
+            attacker=attacker,
+            target_function=fn_key,
+            target_endpoint=fn_endpoint,
+            attack_type=classification or event_type,
+            severity="critical" if fn_key in ("secrets_env", "payment_gateway") else "high" if fn_key in ("admin_access", "database_api") else "medium",
+            result="intercepted",
+            attempts=1,
+            honeypot_source=honeypot,
+            evidence=fn_evidence,
+            confidence=fn_confidence,
+            is_simulated=False,
+            event_timestamp=event_in.timestamp,
+        )
 
     # 7. MITRE & Kill Chain mappings
     mitre_list = await update_mitre_for_attacker(

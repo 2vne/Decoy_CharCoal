@@ -150,6 +150,7 @@ export default function ThreatUniverse({ height = 650, isPreview = false, onExpa
 
   // UI state
   const [activeBandFilter, setActiveBandFilter] = useState('all');
+  const [activeFuncFilter, setActiveFuncFilter] = useState('all');
   const [showRelationships, setShowRelationships] = useState(true);
   const [showOrbits, setShowOrbits] = useState(true);
   const [showLabels, setShowLabels] = useState(true);
@@ -193,6 +194,15 @@ export default function ThreatUniverse({ height = 650, isPreview = false, onExpa
     if (activeBandFilter !== 'all') {
       list = list.filter((a) => a.risk_band === activeBandFilter);
     }
+    if (activeFuncFilter !== 'all') {
+      const fq = activeFuncFilter.toLowerCase();
+      list = list.filter((a) => {
+        const funcs = Array.isArray(a.targeted_functions)
+          ? a.targeted_functions.map(f => (typeof f === 'string' ? f : f?.name || f?.function_name || '')).join(' ')
+          : (a.highest_risk_function || '');
+        return funcs.toLowerCase().includes(fq);
+      });
+    }
     if (searchTerm) {
       const q = searchTerm.toLowerCase();
       list = list.filter(
@@ -200,7 +210,7 @@ export default function ThreatUniverse({ height = 650, isPreview = false, onExpa
       );
     }
     return [...list].sort((a, b) => (b.total_events || 0) - (a.total_events || 0));
-  }, [attackers, activeBandFilter, searchTerm]);
+  }, [attackers, activeBandFilter, activeFuncFilter, searchTerm]);
 
   const threatCounts = useMemo(() => {
     const c = { total: (attackers || []).length, critical: 0, high: 0, medium: 0, low: 0 };
@@ -394,12 +404,17 @@ export default function ThreatUniverse({ height = 650, isPreview = false, onExpa
           if (proj.z < 1.0) {
             const cW = mountRef.current.clientWidth || 1200;
             const cH = mountRef.current.clientHeight || height;
+            const targetedFunctions = Array.isArray(obj.data.targeted_functions)
+              ? obj.data.targeted_functions.map(f => (typeof f === 'string' ? f : f?.name || f?.function_name || ''))
+              : (obj.data.highest_risk_function ? [obj.data.highest_risk_function] : []);
             screenCoords.push({
               id,
               ip: obj.data.ip,
               intent: obj.data.intent || 'reconnaissance',
               riskScore: obj.data.risk_score || 0,
               riskBand: obj.data.risk_band || 'low',
+              targetedFunctions: targetedFunctions.filter(Boolean).slice(0, 2),
+              hasIncident: Boolean(obj.data.has_incident || (obj.data.risk_score && obj.data.risk_score >= 80)),
               x: ((proj.x + 1) * cW) / 2,
               y: ((-proj.y + 1) * cH) / 2,
               isSelected,
@@ -760,6 +775,21 @@ export default function ThreatUniverse({ height = 650, isPreview = false, onExpa
                         {lbl.riskScore.toFixed(0)}
                       </span>
                     </div>
+                    {lbl.targetedFunctions && lbl.targetedFunctions.length > 0 && (
+                      <div className="flex flex-wrap gap-0.5 pt-0.5 border-t border-soc-border/40">
+                        {lbl.targetedFunctions.map((fn, idx) => (
+                          <span key={idx} className="px-1 py-0.2 rounded text-[8px] bg-cyan-950/80 border border-cyan-500/50 text-cyan-300">
+                            {fn.replace(/_/g, ' ')}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {lbl.hasIncident && (
+                      <div className="text-[8px] text-red-400 font-bold tracking-tight flex items-center space-x-1">
+                        <span className="h-1 w-1 rounded-full bg-red-500 animate-ping" />
+                        <span>INCIDENT LINKED</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -802,6 +832,23 @@ export default function ThreatUniverse({ height = 650, isPreview = false, onExpa
               }`}
             >
               {band}
+            </button>
+          ))}
+
+          <span className="text-soc-border">|</span>
+
+          {['all', 'auth', 'admin', 'payment', 'database'].map((fnKey) => (
+            <button
+              key={fnKey}
+              onClick={() => setActiveFuncFilter(fnKey)}
+              title={`Filter function targeting: ${fnKey}`}
+              className={`px-1.5 py-0.5 rounded text-[9px] uppercase font-medium transition border ${
+                activeFuncFilter === fnKey
+                  ? 'bg-amber-950 border-amber-400 text-amber-200'
+                  : 'bg-soc-card/80 border-soc-border text-soc-muted hover:text-white'
+              }`}
+            >
+              {fnKey === 'all' ? 'All Fns' : fnKey}
             </button>
           ))}
 

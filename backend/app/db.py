@@ -31,7 +31,43 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
+import sqlalchemy as sa
+
+async def safe_migrate(conn_or_session) -> None:
+    """
+    Safely adds new columns to existing database tables if they do not exist.
+    Prevents OperationalError without requiring table resets or drops.
+    Compatible with both AsyncConnection and AsyncSession.
+    """
+    def _do_inspect(sync_obj):
+        # Extract underlying Connection if a Session is provided
+        conn = sync_obj.connection() if hasattr(sync_obj, "connection") and callable(sync_obj.connection) else sync_obj
+        inspector = sa.inspect(conn)
+        tables = inspector.get_table_names()
+
+        # Check attackers table
+        if "attackers" in tables:
+            cols = {c["name"] for c in inspector.get_columns("attackers")}
+            if "targeted_functions" not in cols:
+                conn.execute(sa.text("ALTER TABLE attackers ADD COLUMN targeted_functions JSON DEFAULT '[]'"))
+            if "function_risk_score" not in cols:
+                conn.execute(sa.text("ALTER TABLE attackers ADD COLUMN function_risk_score FLOAT DEFAULT 0.0"))
+            if "function_risk_breakdown" not in cols:
+                conn.execute(sa.text("ALTER TABLE attackers ADD COLUMN function_risk_breakdown JSON DEFAULT '{}'"))
+
+        # Check function_target_events table
+        if "function_target_events" in tables:
+            cols = {c["name"] for c in inspector.get_columns("function_target_events")}
+            if "is_simulated" not in cols:
+                conn.execute(sa.text("ALTER TABLE function_target_events ADD COLUMN is_simulated BOOLEAN DEFAULT 0"))
+            if "confidence" not in cols:
+                conn.execute(sa.text("ALTER TABLE function_target_events ADD COLUMN confidence FLOAT DEFAULT 1.0"))
+
+    await conn_or_session.run_sync(_do_inspect)
+
+
 async def create_tables() -> None:
     async with async_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await safe_migrate(conn)
 

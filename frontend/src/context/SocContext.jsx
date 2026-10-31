@@ -37,6 +37,8 @@ export function SocProvider({ children }) {
   const [blocks, setBlocks] = useState([]);
   const [actions, setActions] = useState([]);
   const [metrics, setMetrics] = useState(null);
+  const [functionEvents, setFunctionEvents] = useState([]);
+  const [functionStats, setFunctionStats] = useState(null);
 
   // UI Toast notification state
   const [toasts, setToasts] = useState([]);
@@ -64,7 +66,7 @@ export function SocProvider({ children }) {
   // Fetch actual data from real FastAPI backend
   const refreshAllData = useCallback(async () => {
     try {
-      const [ovData, evData, atkData, hpData, incData, relData, blkData, metData, actData] = await Promise.all([
+      const [ovData, evData, atkData, hpData, incData, relData, blkData, metData, actData, fnStatsData, fnEvData] = await Promise.all([
         api.getOverview(),
         api.getEvents({ limit: 100 }),
         api.getAttackers(),
@@ -74,6 +76,8 @@ export function SocProvider({ children }) {
         api.getBlocks(),
         api.getMetrics(),
         api.getActions(),
+        api.getFunctionStats().catch(() => null),
+        api.getFunctionEvents({ limit: 50 }).catch(() => ({ events: [] })),
       ]);
 
       setBackendError(null);
@@ -86,6 +90,8 @@ export function SocProvider({ children }) {
       setBlocks(blkData?.blocks || []);
       setMetrics(metData || null);
       setActions(actData || []);
+      setFunctionStats(fnStatsData || null);
+      setFunctionEvents(fnEvData?.events || []);
     } catch (err) {
       console.error('Backend connection failed:', err.message);
       setBackendError(err.message || 'Backend connection failed');
@@ -168,6 +174,16 @@ export function SocProvider({ children }) {
                 return [payload, ...prev];
               });
               setOverview((prev) => (prev ? { ...prev, total_incidents: (prev.total_incidents || 0) + 1 } : prev));
+            } else if (type === 'function_targeting') {
+              setFunctionEvents((prev) => [payload, ...prev.slice(0, 99)]);
+              setFunctionStats((prev) => {
+                if (!prev) return prev;
+                return {
+                  ...prev,
+                  total_targeted_events: (prev.total_targeted_events || 0) + 1,
+                };
+              });
+              addToast(`Function Target: ${payload.target_function} (${payload.src_ip})`, 'warning');
             } else if (type === 'action') {
               setActions((prev) => {
                 const idx = prev.findIndex((a) => a.id === payload.id);
@@ -410,6 +426,17 @@ export function SocProvider({ children }) {
         blocks,
         actions,
         metrics,
+        functionEvents,
+        functionStats,
+        refreshFunctionStats: async () => {
+          try {
+            const [s, ev] = await Promise.all([api.getFunctionStats(), api.getFunctionEvents({ limit: 50 })]);
+            setFunctionStats(s);
+            setFunctionEvents(ev?.events || []);
+          } catch (e) {
+            console.error('Failed to refresh function stats', e);
+          }
+        },
         toasts,
         addToast,
         narrator,

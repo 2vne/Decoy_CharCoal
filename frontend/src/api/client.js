@@ -299,4 +299,106 @@ export const api = {
     const res = await fetch(`${BASE_URL}/api/health-correlation`);
     return handleResponse(res);
   },
+
+  async getFunctionEvents(params = {}) {
+    const query = new URLSearchParams();
+    if (params.attacker_id) query.append('attacker_id', params.attacker_id);
+    if (params.target_function) query.append('target_function', params.target_function);
+    if (params.limit) query.append('limit', params.limit);
+    const res = await fetch(`${BASE_URL}/api/intelligence/functions?${query.toString()}`);
+    return handleResponse(res);
+  },
+
+  async getFunctionStats() {
+    const res = await fetch(`${BASE_URL}/api/intelligence/functions/stats`);
+    return handleResponse(res);
+  },
+
+  async simulateFunctionTargeting(payload) {
+    const res = await fetch(`${BASE_URL}/api/intelligence/functions/simulate`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    return handleResponse(res);
+  },
+
+  async getGatewayStats() {
+    const res = await fetch(`${BASE_URL}/api/gateway/stats`);
+    return handleResponse(res);
+  },
+
+  async simulateGatewayTraffic(payload) {
+    const res = await fetch(`${BASE_URL}/api/gateway/simulate_traffic`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify(payload),
+    });
+    return handleResponse(res);
+  },
+
+  async getNginxConfig() {
+    const res = await fetch(`${BASE_URL}/api/gateway/nginx-config`);
+    if (!res.ok) throw new Error('Failed to fetch NGINX configuration');
+    return res.text();
+  },
+
+  async resetVisitorDemo(srcIp = null) {
+    const res = await fetch(`${BASE_URL}/api/gateway/reset_visitor`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ src_ip: srcIp }),
+    });
+    return handleResponse(res);
+  },
+
+  async getGatewayFailures(params = {}) {
+    const query = new URLSearchParams();
+    if (params.status) query.append('status', params.status);
+    if (params.endpoint) query.append('endpoint', params.endpoint);
+    const res = await fetch(`${BASE_URL}/api/intelligence/failures?${query.toString()}`);
+    return handleResponse(res);
+  },
+
+  async recordGatewayFailure(payload) {
+    const res = await fetch(`${BASE_URL}/api/intelligence/failures/record`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify(payload),
+    });
+    return handleResponse(res);
+  },
+
+  async resolveGatewayFailure(incidentId) {
+    const res = await fetch(`${BASE_URL}/api/intelligence/failures/${incidentId}/resolve`, {
+      method: 'POST',
+      headers: jsonHeaders,
+    });
+    return handleResponse(res);
+  },
+
+  async getGitCommits(params = {}) {
+    const query = new URLSearchParams();
+    if (params.incident_id) query.append('incident_id', params.incident_id);
+    const res = await fetch(`${BASE_URL}/api/intelligence/git/commits?${query.toString()}`);
+    return handleResponse(res);
+  },
+
+  async correlateIncidentCommits(payload) {
+    const res = await fetch(`${BASE_URL}/api/intelligence/git/correlate`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify(payload),
+    });
+    return handleResponse(res);
+  },
+
+  async notifyTeamLead(payload) {
+    const res = await fetch(`${BASE_URL}/api/intelligence/git/notify_team`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify(payload),
+    });
+    return handleResponse(res);
+  },
 };

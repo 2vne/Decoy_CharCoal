@@ -56,6 +56,18 @@ async def compute_metrics(db: AsyncSession) -> Dict[str, Any]:
     types_res = await db.execute(stmt_types)
     top_attack_types = [{"event_type": et, "count": count} for et, count in types_res.all()]
 
+    # 7. Severity-wise TTD/TTR comparison
+    severity_metrics = {"critical": {"ttd": None, "ttr": None, "count": 0}, "high": {"ttd": None, "ttr": None, "count": 0}, "medium": {"ttd": None, "ttr": None, "count": 0}}
+    for sev in ("critical", "high", "medium"):
+        sev_incs = [i for i in incidents if (i.risk_score_at_creation >= 76 if sev == "critical" else (i.risk_score_at_creation >= 51 if sev == "high" else True))]
+        sev_ttds = [i.ttd_seconds for i in sev_incs if i.ttd_seconds is not None]
+        sev_ttrs = [i.ttr_seconds for i in sev_incs if i.ttr_seconds is not None]
+        severity_metrics[sev] = {
+            "ttd": round(sum(sev_ttds) / len(sev_ttds), 1) if sev_ttds else None,
+            "ttr": round(sum(sev_ttrs) / len(sev_ttrs), 1) if sev_ttrs else None,
+            "count": len(sev_incs),
+        }
+
     return {
         "ttd_avg": ttd_avg,
         "ttr_avg": ttr_avg,
@@ -66,5 +78,6 @@ async def compute_metrics(db: AsyncSession) -> Dict[str, Any]:
         "top_attack_types": top_attack_types,
         "last_20_ttd": last_20_ttd,
         "last_20_ttr": last_20_ttr,
+        "severity_metrics": severity_metrics,
     }
 
