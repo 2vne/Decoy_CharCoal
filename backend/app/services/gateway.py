@@ -6,8 +6,9 @@ from typing import Any, Dict, Optional, Tuple
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
-from app.models import Attacker, GatewayRequestLog
+from app.models import Attacker, GatewayRequestLog, VisitorSessionRisk
 from app.services.broadcast import broadcast
+from app.services.behaviour_risk import evaluate_routing_decision
 
 # Trusted proxy networks (e.g. localhost, private GCP VPC)
 TRUSTED_PROXIES = [
@@ -56,50 +57,109 @@ async def evaluate_gateway_routing(
     client_ip: str,
     path: str = "/",
     method: str = "GET",
+    session_id: Optional[str] = None,
 ) -> Tuple[str, float, str, Dict[str, Any]]:
     """
-    Evaluates dynamic risk-based routing for an incoming request:
+    Evaluates dynamic risk-based routing for an incoming request using
+    continuous 0-100 behaviour risk scoring and independent-category safeguards:
     Returns (decision, risk_score, reason, telemetry_metadata)
-    - 0-30: 'real' (Low risk - Real Application)
-    - 31-70: 'challenge' (Medium risk - Rate limiting or verification)
-    - 71-100: 'decoy' (High risk - Divert to isolated decoy honeypot application)
+    - 0-29: 'real' (Low risk - Real Application)
+    - 30-49: 'real' (Medium risk - Real Application with enhanced monitoring)
+    - 50-69: 'challenge' / 'real' (Elevated risk - Additional scrutiny)
+    - 70-100: 'decoy' (High risk - Divert to isolated decoy honeypot application)
+      Subject to independent-category safeguard (requires >= 2 independent categories)
     """
     start_time = time.time()
     now = datetime.now(timezone.utc)
 
-    # 1. Lookup attacker profile in database
+    # 1. Resolve active session identifier
+    active_session_id = session_id or f"sess_{client_ip.replace(':', '_')}"
+
+    # 2. Check VisitorSessionRisk
+    sess_stmt = select(VisitorSessionRisk).where(VisitorSessionRisk.session_id == active_session_id)
+    sess_res = await db.execute(sess_stmt)
+    sess = sess_res.scalar_one_or_none()
+
+    # 3. Check Attacker profile for IP-level indicators
     stmt = select(Attacker).where(Attacker.ip == client_ip)
     res = await db.execute(stmt)
     attacker = res.scalar_one_or_none()
 
-    if not attacker:
-        # Unknown client: Default safe low-risk real route
-        score = 0.0
-        decision = "real"
-        reason = f"Normal visitor {client_ip}: No prior suspicious indicators recorded."
-        targeted_funcs = []
-    else:
-        # Use existing attacker risk score and Level-2 function risk score
-        fn_score = attacker.function_risk_score or 0.0
-        primary_score = attacker.risk_score or 0.0
-        # Gateway considers maximum of primary risk and Level-2 function intelligence
-        score = min(100.0, max(primary_score, fn_score))
-        targeted_funcs = attacker.targeted_functions or []
+    sess_score = sess.risk_score if sess else 0.0
+    atk_score = attacker.risk_score if attacker else 0.0
+    fn_score = attacker.function_risk_score if attacker else 0.0
 
-        # Decision threshold policy
-        if score >= 71.0 or "secrets_env" in targeted_funcs or ("admin_access" in targeted_funcs and len(targeted_funcs) >= 2):
+    # Unified risk score: considers session behaviour, IP risk, and function intelligence
+    score = round(min(100.0, max(sess_score, atk_score, fn_score)), 2)
+
+    active_cats = list(sess.active_categories if sess else [])
+    if attacker and attacker.targeted_functions:
+        cat_map = {
+            "auth_login": "login_failures",
+            "auth_otp": "otp_failures",
+            "auth_reset": "password_reset",
+            "admin_access": "admin_access",
+            "secrets_env": "secrets_probing",
+            "database_api": "database_access",
+        }
+        for tf in attacker.targeted_functions:
+            mapped = cat_map.get(tf)
+            if mapped and mapped not in active_cats:
+                active_cats.append(mapped)
+
+    independent_count = len([c for c in active_cats if c != "combined_patterns"])
+    is_diverted = sess.is_diverted if sess else False
+
+    # Independent category safeguard:
+    # If a score is >= 70, require evidence from at least 2 independent categories
+    # or established honeypot attacker / emergency policy.
+    has_sufficient_evidence = (
+        independent_count >= settings.decoy_min_independent_categories
+        or (attacker and (attacker.risk_score >= 71.0 or attacker.function_risk_score >= 71.0))
+        or settings.emergency_single_vector_divert
+    )
+
+    if is_diverted:
+        decision = "decoy"
+        reason = (sess.diversion_reason if sess else None) or "Session previously diverted to isolated honeypot; real application access prohibited."
+    elif score >= settings.decoy_routing_threshold:
+        if has_sufficient_evidence:
             decision = "decoy"
-            funcs_str = ", ".join(targeted_funcs) if targeted_funcs else "multi-vector attack pattern"
-            reason = (
-                f"Diverted to DECOY: Threat score {score:.1f}/100. "
-                f"Source targeted {len(targeted_funcs)} sensitive function(s) ({funcs_str}) with rapid correlation."
-            )
-        elif score >= 31.0:
-            decision = "challenge"
-            reason = f"Challenge / Rate-Limit applied: Elevated risk score {score:.1f}/100 detected from previous activity."
+            cats_str = ", ".join([c for c in active_cats if c != "combined_patterns"]) or "multi-vector attack pattern"
+            reason = f"Diverted to DECOY: Threat score {score:.1f}/100 confirmed by independent evidence ({cats_str})."
         else:
+            cats_str = ", ".join(active_cats)
             decision = "real"
-            reason = f"Allowed to REAL application: Low risk score {score:.1f}/100 within legitimate tolerance."
+            reason = f"Elevated Scrutiny on REAL application: Threat score {score:.1f}/100 exceeds threshold but lacks confirmation from at least {settings.decoy_min_independent_categories} independent categories (active: {cats_str}). Safeguard prevented false-positive decoy routing."
+    elif score >= 50.0:
+        decision = "challenge"
+        reason = f"Challenge / Scrutiny applied: Elevated risk score {score:.1f}/100 detected from previous activity."
+    elif score >= 30.0:
+        decision = "challenge"
+        reason = f"Allowed to REAL application with enhanced monitoring: Risk score {score:.1f}/100."
+    else:
+        decision = "real"
+        reason = f"Allowed to REAL application: Low risk score {score:.1f}/100 within legitimate tolerance."
+
+    if sess:
+        sess.risk_score = max(sess.risk_score, score)
+        if decision == "decoy" and not sess.is_diverted:
+            sess.is_diverted = True
+            sess.diverted_at = now
+            sess.current_route = "decoy"
+            sess.diversion_reason = reason
+            transitions = list(sess.routing_transitions or [])
+            transitions.append({
+                "transition": "REAL → DECOY",
+                "session_id": active_session_id,
+                "src_ip": client_ip,
+                "score": score,
+                "reason": reason,
+                "timestamp": now.isoformat(),
+            })
+            sess.routing_transitions = transitions
+
+    targeted_funcs = active_cats
 
     elapsed_ms = round((time.time() - start_time) * 1000, 2)
 

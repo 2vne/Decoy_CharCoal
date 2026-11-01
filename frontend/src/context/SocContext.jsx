@@ -239,6 +239,12 @@ export function SocProvider({ children }) {
               );
               setOverview((prev) => (prev ? { ...prev, active_blocks: Math.max(0, (prev.active_blocks || 1) - 1) } : prev));
               addToast(`Auto-Rollback Complete: ${payload.ip} unblocked`, 'info');
+            } else if (type === 'session_transition') {
+              addToast(`TRANSITION: ${payload.transition} for ${payload.src_ip} (Score: ${payload.new_score})`, 'warning');
+            } else if (type === 'risk_score_update') {
+              if (payload.routing_transition) {
+                addToast(`DIVERSION EVENT: ${payload.routing_transition.transition} (${payload.src_ip})`, 'error');
+              }
             }
           } catch (e) {
             console.error('Error parsing WS message:', e);

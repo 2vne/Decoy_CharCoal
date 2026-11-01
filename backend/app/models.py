@@ -315,4 +315,57 @@ class CommitAttribution(Base):
     correlation_explanation: Mapped[str] = mapped_column(sa.Text, default="")
 
 
+class VisitorSessionRisk(Base):
+    __tablename__ = "visitor_session_risks"
+
+    id: Mapped[int] = mapped_column(sa.Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(sa.String(128), unique=True, index=True)
+    src_ip: Mapped[str] = mapped_column(sa.String(64), index=True)
+    account_email: Mapped[Optional[str]] = mapped_column(sa.String(128), nullable=True, index=True)
+    risk_score: Mapped[float] = mapped_column(sa.Float, default=0.0)
+    previous_risk_score: Mapped[float] = mapped_column(sa.Float, default=0.0)
+    risk_classification: Mapped[str] = mapped_column(sa.String(32), default="NORMAL")
+    category_scores: Mapped[Dict[str, Any]] = mapped_column(sa.JSON, default=dict)
+    active_categories: Mapped[List[str]] = mapped_column(sa.JSON, default=list)
+    independent_categories_count: Mapped[int] = mapped_column(sa.Integer, default=0)
+    reason_codes: Mapped[List[str]] = mapped_column(sa.JSON, default=list)
+    current_route: Mapped[str] = mapped_column(sa.String(32), default="real")
+    is_diverted: Mapped[bool] = mapped_column(sa.Boolean, default=False, index=True)
+    diverted_at: Mapped[Optional[datetime]] = mapped_column(sa.DateTime(timezone=True), nullable=True)
+    diversion_reason: Mapped[Optional[str]] = mapped_column(sa.Text, nullable=True)
+    routing_transitions: Mapped[List[Dict[str, Any]]] = mapped_column(sa.JSON, default=list)
+    request_count: Mapped[int] = mapped_column(sa.Integer, default=0)
+    first_seen: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), default=utc_now)
+    last_seen: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), default=utc_now)
+
+
+class AccountRiskHistory(Base):
+    __tablename__ = "account_risk_histories"
+
+    id: Mapped[int] = mapped_column(sa.Integer, primary_key=True, autoincrement=True)
+    account_email: Mapped[str] = mapped_column(sa.String(128), unique=True, index=True)
+    risk_score: Mapped[float] = mapped_column(sa.Float, default=0.0)
+    risk_classification: Mapped[str] = mapped_column(sa.String(32), default="NORMAL")
+    last_session_id: Mapped[Optional[str]] = mapped_column(sa.String(128), nullable=True)
+    history_events: Mapped[List[Dict[str, Any]]] = mapped_column(sa.JSON, default=list)
+    updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), default=utc_now)
+
+
+class ObservedBehaviourEvent(Base):
+    __tablename__ = "observed_behaviour_events"
+
+    id: Mapped[int] = mapped_column(sa.Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(sa.String(128), index=True)
+    src_ip: Mapped[str] = mapped_column(sa.String(64), index=True)
+    account_email: Mapped[Optional[str]] = mapped_column(sa.String(128), nullable=True, index=True)
+    category: Mapped[str] = mapped_column(sa.String(64), index=True)
+    endpoint: Mapped[str] = mapped_column(sa.String(256), default="")
+    event_type: Mapped[str] = mapped_column(sa.String(64), default="probe")
+    event_fingerprint: Mapped[str] = mapped_column(sa.String(128), index=True)
+    evidence: Mapped[str] = mapped_column(sa.Text, default="")
+    timestamp: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), default=utc_now, index=True)
+    is_simulated: Mapped[bool] = mapped_column(sa.Boolean, default=False)
+
+
+
 

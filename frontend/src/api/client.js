@@ -378,6 +378,25 @@ export const api = {
     return handleResponse(res);
   },
 
+  async getGatewaySessions(limit = 50) {
+    const res = await fetch(`${BASE_URL}/api/gateway/sessions?limit=${limit}`);
+    return handleResponse(res);
+  },
+
+  async getGatewaySession(sessionId) {
+    const res = await fetch(`${BASE_URL}/api/gateway/session/${encodeURIComponent(sessionId)}`);
+    return handleResponse(res);
+  },
+
+  async ingestBehaviourEvent(payload) {
+    const res = await fetch(`${BASE_URL}/api/gateway/behaviour_event`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify(payload),
+    });
+    return handleResponse(res);
+  },
+
   async getGatewayFailures(params = {}) {
     const query = new URLSearchParams();
     if (params.status) query.append('status', params.status);

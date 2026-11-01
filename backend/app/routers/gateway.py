@@ -7,8 +7,21 @@ from sqlalchemy import desc, func, select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.db import get_db
-from app.models import Attacker, GatewayRequestLog, FunctionTargetEvent
+from app.models import (
+    Attacker,
+    GatewayRequestLog,
+    FunctionTargetEvent,
+    VisitorSessionRisk,
+    ObservedBehaviourEvent,
+    AccountRiskHistory,
+)
 from app.services.gateway import evaluate_gateway_routing, extract_client_ip
+from app.services.behaviour_risk import (
+    record_behaviour_event,
+    compute_behaviour_risk_score,
+    get_configured_allocations,
+    BEHAVIOUR_CATEGORIES,
+)
 from app.demo_apps.real_app import router as real_app_router
 from app.demo_apps.decoy_app import router as decoy_app_router
 
@@ -33,7 +46,7 @@ async def reset_visitor(
 ):
     """
     Controlled Demo Reset:
-    Resets the visitor's risk score and clears their function targeting events,
+    Resets the visitor's risk score and clears their function targeting events and behaviour records,
     allowing an external tester to demonstrate normal -> suspicious -> diversion again from scratch.
     """
     remote_addr = request.client.host if request.client else "127.0.0.1"
@@ -50,8 +63,29 @@ async def reset_visitor(
         atk.targeted_functions = []
         atk.status = "active"
 
+    # Reset visitor session risk records
+    sess_stmt = select(VisitorSessionRisk).where(VisitorSessionRisk.src_ip == target_ip)
+    sess_res = await db.execute(sess_stmt)
+    for sess in sess_res.scalars().all():
+        sess.risk_score = 0.0
+        sess.previous_risk_score = 0.0
+        sess.risk_classification = "NORMAL"
+        sess.category_scores = {}
+        sess.active_categories = []
+        sess.independent_categories_count = 0
+        sess.reason_codes = []
+        sess.current_route = "real"
+        sess.is_diverted = False
+        sess.diverted_at = None
+        sess.diversion_reason = None
+        sess.routing_transitions = []
+
     del_stmt = delete(FunctionTargetEvent).where(FunctionTargetEvent.src_ip == target_ip)
     await db.execute(del_stmt)
+
+    del_beh_stmt = delete(ObservedBehaviourEvent).where(ObservedBehaviourEvent.src_ip == target_ip)
+    await db.execute(del_beh_stmt)
+
     await db.commit()
 
     return {
@@ -78,12 +112,19 @@ async def evaluate_nginx_auth_request(
     client_ip = extract_client_ip(headers, remote_addr)
     target_path = headers.get("x-original-uri") or headers.get("X-Original-URI") or "/"
     target_method = headers.get("x-original-method") or headers.get("X-Original-Method") or "GET"
+    session_id = (
+        headers.get("x-session-id")
+        or headers.get("X-Session-ID")
+        or request.cookies.get("sentinel_session")
+        or f"sess_{client_ip.replace(':', '_')}"
+    )
 
     decision, score, reason, meta = await evaluate_gateway_routing(
         db=db,
         client_ip=client_ip,
         path=target_path,
         method=target_method,
+        session_id=session_id,
     )
     await db.commit()
 
@@ -91,12 +132,14 @@ async def evaluate_nginx_auth_request(
     response.headers["X-Sentinel-Route"] = decision
     response.headers["X-Sentinel-Risk"] = str(score)
     response.headers["X-Sentinel-Client-IP"] = client_ip
+    response.headers["X-Sentinel-Session"] = session_id
     response.headers["X-Sentinel-Reason"] = reason[:200]
 
     return {
         "status": "evaluated",
         "route": decision,
         "risk_score": score,
+        "session_id": session_id,
         "reason": reason,
         "client_ip": client_ip,
     }
@@ -159,6 +202,11 @@ async def get_gateway_stats(db: AsyncSession = Depends(get_db)):
         for log in recent_res.scalars().all()
     ]
 
+    # 5. Diverted visitor sessions
+    stmt_sess_div = select(func.count(VisitorSessionRisk.id)).where(VisitorSessionRisk.is_diverted == True)
+    div_sess_res = await db.execute(stmt_sess_div)
+    diverted_sessions_count = int(div_sess_res.scalar() or 0)
+
     return {
         "gateway_status": "operational",
         "total_requests": total_requests,
@@ -167,12 +215,15 @@ async def get_gateway_stats(db: AsyncSession = Depends(get_db)):
         "challenge_traffic_count": challenge_count,
         "blocked_traffic_count": blocked_count,
         "diverted_attackers_count": diverted_attackers_count,
+        "diverted_sessions_count": diverted_sessions_count,
         "average_response_time_ms": avg_response_time,
         "routing_policy": {
-            "real_threshold": "0 - 30",
-            "challenge_threshold": "31 - 70",
-            "decoy_threshold": "71 - 100",
+            "real_threshold": "0 - 29",
+            "challenge_threshold": "30 - 69",
+            "decoy_threshold": "70 - 100",
+            "safeguard": "Minimum 2 independent categories required for automatic decoy diversion",
         },
+        "point_allocations": get_configured_allocations(),
         "recent_decisions": recent_logs,
     }
 
@@ -280,4 +331,120 @@ server {
 }
 """
     return Response(content=conf, media_type="text/plain")
+
+
+class BehaviourEventIn(BaseModel):
+    session_id: str
+    src_ip: str
+    category: str
+    endpoint: str = ""
+    event_type: str = "probe"
+    evidence: str = ""
+    account_email: Optional[str] = None
+    is_simulated: bool = False
+
+
+@router.post("/behaviour_event")
+async def ingest_behaviour_event_api(
+    payload: BehaviourEventIn,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Ingests an observed behaviour event, recomputes rolling 0-100 risk score,
+    and updates session/routing states with safeguards.
+    """
+    result = await record_behaviour_event(
+        db=db,
+        session_id=payload.session_id,
+        src_ip=payload.src_ip,
+        category=payload.category,
+        endpoint=payload.endpoint,
+        event_type=payload.event_type,
+        evidence=payload.evidence,
+        account_email=payload.account_email,
+        is_simulated=payload.is_simulated,
+    )
+    await db.commit()
+    return result
+
+
+@router.get("/sessions")
+async def list_visitor_sessions(
+    limit: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Returns active visitor sessions with continuously updated 0-100 behaviour scores.
+    """
+    stmt = (
+        select(VisitorSessionRisk)
+        .order_by(desc(VisitorSessionRisk.last_seen))
+        .limit(limit)
+    )
+    res = await db.execute(stmt)
+    sessions = res.scalars().all()
+    return {
+        "total": len(sessions),
+        "point_allocations": get_configured_allocations(),
+        "categories": BEHAVIOUR_CATEGORIES,
+        "sessions": [
+            {
+                "session_id": s.session_id,
+                "src_ip": s.src_ip,
+                "account_email": s.account_email,
+                "risk_score": s.risk_score,
+                "previous_risk_score": s.previous_risk_score,
+                "risk_classification": s.risk_classification,
+                "category_scores": s.category_scores,
+                "active_categories": s.active_categories,
+                "independent_categories_count": s.independent_categories_count,
+                "reason_codes": s.reason_codes,
+                "current_route": s.current_route,
+                "is_diverted": s.is_diverted,
+                "diverted_at": s.diverted_at.isoformat() if s.diverted_at else None,
+                "diversion_reason": s.diversion_reason,
+                "routing_transitions": s.routing_transitions or [],
+                "request_count": s.request_count,
+                "first_seen": s.first_seen.isoformat() if s.first_seen else None,
+                "last_seen": s.last_seen.isoformat() if s.last_seen else None,
+            }
+            for s in sessions
+        ],
+    }
+
+
+@router.get("/session/{session_id}")
+async def get_visitor_session_risk(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Returns full behaviour breakdown, 0-100 score, severity mappings, and transition history for a session.
+    """
+    stmt = select(VisitorSessionRisk).where(VisitorSessionRisk.session_id == session_id)
+    res = await db.execute(stmt)
+    sess = res.scalar_one_or_none()
+    if not sess:
+        raise HTTPException(status_code=404, detail="Visitor session not found")
+
+    return {
+        "session_id": sess.session_id,
+        "src_ip": sess.src_ip,
+        "account_email": sess.account_email,
+        "risk_score": sess.risk_score,
+        "previous_risk_score": sess.previous_risk_score,
+        "risk_classification": sess.risk_classification,
+        "category_scores": sess.category_scores,
+        "active_categories": sess.active_categories,
+        "independent_categories_count": sess.independent_categories_count,
+        "reason_codes": sess.reason_codes,
+        "current_route": sess.current_route,
+        "is_diverted": sess.is_diverted,
+        "diverted_at": sess.diverted_at.isoformat() if sess.diverted_at else None,
+        "diversion_reason": sess.diversion_reason,
+        "routing_transitions": sess.routing_transitions or [],
+        "request_count": sess.request_count,
+        "first_seen": sess.first_seen.isoformat() if sess.first_seen else None,
+        "last_seen": sess.last_seen.isoformat() if sess.last_seen else None,
+    }
 

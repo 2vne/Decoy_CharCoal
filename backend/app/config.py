@@ -55,6 +55,40 @@ class Settings(BaseSettings):
         "high": 100.0,
     }
 
+    # 0-100 Behaviour-Based Risk Scoring Configuration (Total must equal 100)
+    behaviour_point_allocation: dict = {
+        "login_failures": 12,
+        "otp_failures": 8,
+        "password_reset": 5,
+        "admin_access": 15,
+        "secrets_probing": 20,
+        "endpoint_enumeration": 15,
+        "abnormal_rate": 10,
+        "database_access": 10,
+        "combined_patterns": 5,
+    }
+
+    # Rolling observation windows (seconds)
+    observation_windows: dict = {
+        "auth": 600,         # 10 minutes for authentication behaviour
+        "probe": 600,        # 10 minutes for endpoint and secrets probing
+        "rate": 60,          # 1 minute for request frequency
+        "session": 1800,     # 30 minutes for broader session behaviour
+    }
+
+    # Classification thresholds: 0-29 NORMAL, 30-49 SUSPICIOUS, 50-69 HIGH_RISK, 70-100 LIKELY_MALICIOUS
+    classification_thresholds: dict = {
+        "NORMAL": 29.99,
+        "SUSPICIOUS": 49.99,
+        "HIGH_RISK": 69.99,
+        "LIKELY_MALICIOUS": 100.0,
+    }
+
+    # Decoy routing safeguards
+    decoy_routing_threshold: float = 70.0
+    decoy_min_independent_categories: int = 2
+    emergency_single_vector_divert: bool = False
+
     @field_validator("safe_ips", mode="before")
     @classmethod
     def parse_safe_ips(cls, v):
