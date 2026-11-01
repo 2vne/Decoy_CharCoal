@@ -113,6 +113,54 @@ async def test_assistant_security_action_confirmation():
 
 
 @pytest.mark.asyncio
+async def test_assistant_investigate_incident_correlation():
+    """Verify that investigating an incident by title correlates telemetry rather than failing."""
+    async with AsyncSessionLocal() as db:
+        res = await chat_with_assistant("Investigate incident: CRITICAL: Function Attack - Secrets Env", [], db)
+        assert res is not None
+        assert "reply" in res
+        reply = res["reply"]
+        assert "Incident not found in database." not in reply
+        assert "INCIDENT INVESTIGATION" in reply or "Executive Summary" in reply
+        assert "Secrets" in reply or "secrets_env" in reply or "Target Function" in reply
+        assert "Recommended Response" in reply or "Playbook Advisory" in reply
+
+
+@pytest.mark.asyncio
+async def test_assistant_investigate_with_live_function_telemetry():
+    """Verify that live FunctionTargetEvent is correlated when investigating by function name."""
+    from app.models import Attacker, FunctionTargetEvent
+    import time
+    test_ip = f"198.51.100.{int(time.time() * 1000) % 200 + 10}"
+    async with AsyncSessionLocal() as db:
+        att = Attacker(ip=test_ip, risk_score=88.0, risk_band="critical", intent="Credential Extraction")
+        db.add(att)
+        await db.flush()
+
+        fte = FunctionTargetEvent(
+            attacker_id=att.id,
+            src_ip=test_ip,
+            target_function="secrets_env",
+            target_endpoint="/api/v1/secrets",
+            attack_type="Sensitive Probe",
+            severity="critical",
+            result="intercepted",
+            attempts=7,
+        )
+        db.add(fte)
+        await db.commit()
+
+        res = await chat_with_assistant("Investigate incident: Function Attack - Secrets Env", [], db)
+        assert res is not None
+        reply = res["reply"]
+        assert test_ip in reply
+        assert "CRITICAL" in reply
+        assert "secrets_env" in reply or "Configuration & Secrets Exposure" in reply
+        assert "Recommended Response" in reply
+        assert "DECOY" in reply or "Decoy" in reply
+
+
+@pytest.mark.asyncio
 async def test_assistant_action_execution_flow():
     """Verify confirming a security action triggers authorized execution and audit trail."""
     transport = ASGITransport(app=app)
