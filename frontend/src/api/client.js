@@ -401,4 +401,69 @@ export const api = {
     });
     return handleResponse(res);
   },
+
+  // --------------------------------------------------------------------------
+  // SENTINEL SaaS Portal Endpoints (Decoy & Real Application Integration)
+  // --------------------------------------------------------------------------
+  async portalLogin(basePath = '/demo/decoy', email, password) {
+    const res = await fetch(`${BASE_URL}${basePath}/auth/login`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ email, password }),
+    });
+    return handleResponse(res);
+  },
+
+  async portalVerifyOtp(basePath = '/demo/decoy', email, otpCode) {
+    const res = await fetch(`${BASE_URL}${basePath}/auth/otp/verify`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ email, otp_code: otpCode }),
+    });
+    return handleResponse(res);
+  },
+
+  async portalPasswordReset(basePath = '/demo/decoy', email) {
+    const res = await fetch(`${BASE_URL}${basePath}/auth/password/reset`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ email }),
+    });
+    return handleResponse(res);
+  },
+
+  async portalGetDashboard(basePath = '/demo/decoy') {
+    const res = await fetch(`${BASE_URL}${basePath}/user/dashboard`);
+    return handleResponse(res);
+  },
+
+  async portalGetCustomers(basePath = '/demo/decoy') {
+    const res = await fetch(`${BASE_URL}${basePath}/customers`);
+    return handleResponse(res);
+  },
+
+  async portalGetAdminSystem(basePath = '/demo/decoy', authToken = 'admin-secret-token') {
+    const res = await fetch(`${BASE_URL}${basePath}/admin/system`, {
+      headers: {
+        ...jsonHeaders,
+        Authorization: `Bearer ${authToken}`,
+      },
+    });
+    return handleResponse(res);
+  },
+
+  async portalCharge(basePath = '/demo/decoy', payload) {
+    const res = await fetch(`${BASE_URL}${basePath}/checkout/charge`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify(payload),
+    });
+    return handleResponse(res);
+  },
+
+  async portalGetEnvHoneytoken(basePath = '/demo/decoy') {
+    const res = await fetch(`${BASE_URL}${basePath}/.env`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}: Failed to read configuration`);
+    return res.text();
+  },
 };

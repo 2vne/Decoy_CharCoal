@@ -114,3 +114,4 @@ if __name__ == "__main__":
     print(f"[*] Upstream Backend: {BACKEND_BASE_URL}")
     print(f"[*] Gateway Routing: 0-30 Real | 31-70 Challenge | 71-100 Decoy")
     uvicorn.run("gateway_proxy:app", host=args.host, port=args.port, log_level="info")
+

@@ -278,6 +278,103 @@ async def test_end_to_end_visitor_to_decoy_progression_and_reset(db: AsyncSessio
         app.dependency_overrides.clear()
 
 
+@pytest.mark.asyncio
+async def test_portal_decoy_and_real_endpoints_complete_coverage(db: AsyncSession):
+    """
+    Verifies that all 7 portal screens have functional backend endpoint parity
+    and that decoy interactions correctly trigger deception telemetry.
+    """
+    async def override_get_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_get_db
+    test_ip = "198.51.100.245"
+    headers = {"x-forwarded-for": test_ip, "x-real-ip": test_ip}
+
+    try:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            # 1. Screen C: User Dashboard (Decoy and Real parity)
+            decoy_dash = await ac.get("/demo/decoy/user/dashboard", headers=headers)
+            assert decoy_dash.status_code == 200
+            assert "total_active_sessions" in decoy_dash.json()
+            assert len(decoy_dash.json().get("recent_activity", [])) >= 1
+
+            real_dash = await ac.get("/demo/real/user/dashboard", headers=headers)
+            assert real_dash.status_code == 200
+            assert "total_active_sessions" in real_dash.json()
+
+            # 2. Screen D: Customers (Decoy Canary records database_api telemetry)
+            cust_resp = await ac.get("/demo/decoy/customers", headers=headers)
+            assert cust_resp.status_code == 200
+            assert len(cust_resp.json()["customers"]) >= 2
+
+            db_events = (await db.execute(
+                select(FunctionTargetEvent).where(
+                    FunctionTargetEvent.src_ip == test_ip,
+                    FunctionTargetEvent.target_function == "database_api"
+                )
+            )).scalars().all()
+            assert len(db_events) >= 1
+
+            # 3. Screen E: Admin Console (Records admin_access telemetry)
+            admin_resp = await ac.get("/demo/decoy/admin/system", headers=headers)
+            assert admin_resp.status_code == 200
+            assert "cluster_nodes" in admin_resp.json()
+
+            admin_events = (await db.execute(
+                select(FunctionTargetEvent).where(
+                    FunctionTargetEvent.src_ip == test_ip,
+                    FunctionTargetEvent.target_function == "admin_access"
+                )
+            )).scalars().all()
+            assert len(admin_events) >= 1
+
+            # 4. Screen E: Honeytoken .env download (Records secrets_env telemetry)
+            env_resp = await ac.get("/demo/decoy/.env", headers=headers)
+            assert env_resp.status_code == 200
+            assert "DATABASE_URL" in env_resp.text
+
+            secret_events = (await db.execute(
+                select(FunctionTargetEvent).where(
+                    FunctionTargetEvent.src_ip == test_ip,
+                    FunctionTargetEvent.target_function == "secrets_env"
+                )
+            )).scalars().all()
+            assert len(secret_events) >= 1
+
+            # 5. Screen F: Password Reset (Records auth_reset telemetry)
+            reset_resp = await ac.post("/demo/decoy/auth/password/reset", json={"email": "victim@corp.com"}, headers=headers)
+            assert reset_resp.status_code == 200
+
+            reset_events = (await db.execute(
+                select(FunctionTargetEvent).where(
+                    FunctionTargetEvent.src_ip == test_ip,
+                    FunctionTargetEvent.target_function == "auth_reset"
+                )
+            )).scalars().all()
+            assert len(reset_events) >= 1
+
+            # 6. Screen G: Checkout Charge (Records payment_gateway telemetry)
+            charge_resp = await ac.post(
+                "/demo/decoy/checkout/charge",
+                json={"customer_id": "canary_901", "amount": 250.0, "currency": "USD", "token": "tok_test"},
+                headers=headers
+            )
+            assert charge_resp.status_code == 200
+            assert "charge_id" in charge_resp.json()
+
+            pay_events = (await db.execute(
+                select(FunctionTargetEvent).where(
+                    FunctionTargetEvent.src_ip == test_ip,
+                    FunctionTargetEvent.target_function == "payment_gateway"
+                )
+            )).scalars().all()
+            assert len(pay_events) >= 1
+    finally:
+        app.dependency_overrides.clear()
+
+
 # ---------------------------------------------------------------------------
 # 4. Failure Intelligence & 72-Hour Recurrence Detection
 # ---------------------------------------------------------------------------

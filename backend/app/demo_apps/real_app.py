@@ -162,6 +162,11 @@ async def real_user_dashboard():
         "total_active_sessions": 42,
         "system_status": "operational",
         "active_tenants": len(DUMMY_CUSTOMERS),
+        "recent_activity": [
+            {"id": "act_101", "action": "Cluster health check passed", "time": "5 mins ago", "user": "monitoring"},
+            {"id": "act_102", "action": "Enterprise customer onboarded", "time": "45 mins ago", "user": "sales-ops"},
+            {"id": "act_103", "action": "Backup snapshot verified", "time": "2 hours ago", "user": "backup-daemon"},
+        ],
     }
 
 

@@ -14,12 +14,19 @@ import ReportsPage from './pages/ReportsPage';
 import FunctionIntelligencePage from './pages/FunctionIntelligencePage';
 import GatewayPage from './pages/GatewayPage';
 import GatewayFailuresPage from './pages/GatewayFailuresPage';
+import PortalApp from './portal/PortalApp';
 
 export default function App() {
   return (
     <SocProvider>
       <BrowserRouter>
         <Routes>
+          {/* Dedicated Enterprise SaaS Decoy & Real Portals */}
+          <Route path="/portal/*" element={<PortalApp initialMode="decoy" />} />
+          <Route path="/demo/decoy/*" element={<PortalApp initialMode="decoy" />} />
+          <Route path="/demo/real/*" element={<PortalApp initialMode="real" />} />
+
+          {/* SOC Analyst Dashboard */}
           <Route path="/" element={<Layout />}>
             <Route index element={<Overview />} />
             <Route path="events" element={<LiveEvents />} />

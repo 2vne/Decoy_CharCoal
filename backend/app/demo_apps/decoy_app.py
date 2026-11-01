@@ -137,6 +137,22 @@ async def decoy_password_reset(req: DecoyPasswordResetRequest, request: Request,
     return {"status": "sent", "message": f"Password recovery token generated for {req.email}."}
 
 
+@router.get("/user/dashboard")
+async def decoy_user_dashboard(request: Request, db: AsyncSession = Depends(get_db)):
+    return {
+        "app": "SENTINEL Production Portal",
+        "environment": "cloud_infrastructure",
+        "total_active_sessions": 14,
+        "system_status": "operational",
+        "active_tenants": len(CANARY_CUSTOMERS),
+        "recent_activity": [
+            {"id": "act_1", "action": "Cluster configuration updated", "time": "12 mins ago", "user": "devops-lead"},
+            {"id": "act_2", "action": "Automatic SSL renewal completed", "time": "1 hour ago", "user": "system"},
+            {"id": "act_3", "action": "Customer API token generated", "time": "3 hours ago", "user": "billing-admin"},
+        ],
+    }
+
+
 @router.get("/admin/system")
 async def decoy_admin_system(request: Request, db: AsyncSession = Depends(get_db)):
     ip = _get_client_ip(request)

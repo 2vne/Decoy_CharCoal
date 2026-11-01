@@ -22,6 +22,8 @@ import {
   Info,
   GitBranch,
   Flame,
+  Shield,
+  ExternalLink,
 } from 'lucide-react';
 import { useSoc } from '../context/SocContext';
 import AttackerInvestigation from './AttackerInvestigation';
@@ -170,6 +172,22 @@ export default function Layout() {
               </NavLink>
             );
           })}
+
+          <div className="pt-2 mt-2 border-t border-soc-border/40">
+            <a
+              href="/portal"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-between px-3 py-2 rounded text-xs font-medium text-amber-300 hover:text-white bg-amber-950/30 hover:bg-amber-900/40 border border-amber-500/30 transition-all shadow-[0_0_10px_rgba(245,158,11,0.1)]"
+              title="Launch the customer-facing SaaS Decoy Portal in a new browser tab"
+            >
+              <div className="flex items-center space-x-2.5">
+                <Shield className="h-4 w-4 text-amber-400" />
+                <span>Decoy SaaS Portal</span>
+              </div>
+              <ExternalLink className="h-3.5 w-3.5 text-amber-400/80" />
+            </a>
+          </div>
         </nav>
 
         {/* Sidebar Footer / Simulation Launcher */}
