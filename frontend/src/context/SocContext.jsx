@@ -4,17 +4,22 @@ import { api } from '../api/client';
 const SocContext = createContext(null);
 
 function resolveWsUrl() {
-  if (import.meta.env.VITE_WS_URL) {
-    return import.meta.env.VITE_WS_URL;
+  const envWs = import.meta.env.VITE_WS_URL;
+  if (typeof window !== 'undefined' && window.location) {
+    const currentHost = window.location.hostname;
+    if (envWs && envWs.trim()) {
+      const cleanWs = envWs.trim();
+      if (currentHost && currentHost !== 'localhost' && currentHost !== '127.0.0.1') {
+        return cleanWs.replace('://localhost:', `://${currentHost}:`).replace('://127.0.0.1:', `://${currentHost}:`);
+      }
+      return cleanWs;
+    }
+    if (currentHost) {
+      const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      return `${wsProto}//${currentHost}:8000/ws/live`;
+    }
   }
-  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-  const wsProtocol = apiUrl.startsWith('https') ? 'wss:' : 'ws:';
-  try {
-    const parsed = new URL(apiUrl);
-    return `${wsProtocol}//${parsed.host}/ws/live`;
-  } catch {
-    return 'ws://localhost:8000/ws/live';
-  }
+  return (envWs || 'ws://localhost:8000/ws/live').trim();
 }
 
 export function SocProvider({ children }) {

@@ -1,4 +1,27 @@
-export const BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/+$/, '');
+export function resolveBaseUrl() {
+  const envUrl = import.meta.env.VITE_API_URL;
+  if (typeof window !== 'undefined' && window.location) {
+    const currentHost = window.location.hostname;
+    // If VITE_API_URL is configured
+    if (envUrl && envUrl.trim()) {
+      const cleanEnv = envUrl.trim().replace(/\/+$/, '');
+      // If user is accessing from another computer on Wi-Fi/LAN (e.g. PC2)
+      // and the env variable was left pointing to localhost, auto-substitute PC1's hostname
+      if (currentHost && currentHost !== 'localhost' && currentHost !== '127.0.0.1') {
+        return cleanEnv.replace('://localhost:', `://${currentHost}:`).replace('://127.0.0.1:', `://${currentHost}:`);
+      }
+      return cleanEnv;
+    }
+    // If no VITE_API_URL is set, dynamically use current host on port 8000
+    if (currentHost) {
+      const protocol = window.location.protocol || 'http:';
+      return `${protocol}//${currentHost}:8000`;
+    }
+  }
+  return (envUrl || 'http://localhost:8000').trim().replace(/\/+$/, '');
+}
+
+export const BASE_URL = resolveBaseUrl();
 
 /**
  * Backend Endpoint Authentication Analysis:

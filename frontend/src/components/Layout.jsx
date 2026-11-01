@@ -26,6 +26,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { useSoc } from '../context/SocContext';
+import { BASE_URL } from '../api/client';
 import AttackerInvestigation from './AttackerInvestigation';
 
 export default function Layout() {
@@ -314,7 +315,7 @@ export default function Layout() {
                     Backend Service Unavailable
                   </div>
                   <div className="text-[11px] text-red-300/80 mt-0.5">
-                    Unable to reach FastAPI backend at <code className="text-cyan-300 bg-black/60 px-1 py-0.5 rounded">{import.meta.env.VITE_API_URL || 'http://localhost:8000'}</code> ({backendError})
+                    Unable to reach FastAPI backend at <code className="text-cyan-300 bg-black/60 px-1 py-0.5 rounded">{BASE_URL}</code> ({backendError})
                   </div>
                 </div>
               </div>

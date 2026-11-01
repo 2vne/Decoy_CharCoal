@@ -21,6 +21,7 @@ import {
   Tooltip,
 } from 'recharts';
 import { useSoc } from '../context/SocContext';
+import { BASE_URL } from '../api/client';
 import ThreatUniverse from '../components/ThreatUniverse';
 
 export default function Overview() {
@@ -59,7 +60,7 @@ export default function Overview() {
           LOADING REAL-TIME SOC TELEMETRY...
         </div>
         <p className="text-xs text-soc-muted">
-          Connecting to backend at {import.meta.env.VITE_API_URL || 'http://localhost:8000'}
+          Connecting to backend at {BASE_URL}
         </p>
       </div>
     );

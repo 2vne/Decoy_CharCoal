@@ -99,7 +99,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS setup
+# CORS setup - supports localhost, 127.0.0.1, and all LAN Wi-Fi subnets (10.x, 192.168.x, 172.16-31.x)
 allowed_origins = [
     settings.frontend_origin,
     "http://localhost:3000",
@@ -110,7 +110,7 @@ allowed_origins = [
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
