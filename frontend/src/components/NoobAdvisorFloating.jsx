@@ -144,7 +144,7 @@ export default function NoobAdvisorFloating() {
         id: newlyIdentified.id,
         title: newlyIdentified.title,
         severity: newlyIdentified.severity || 'critical',
-        source: newlyIdentified.source || 'Sentinel Deception Gateway',
+        source: newlyIdentified.source || 'MIRAGE Deception Gateway',
         topFix,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       });
@@ -194,7 +194,7 @@ export default function NoobAdvisorFloating() {
       if (lower.includes('fix') || lower.includes('what should i') || lower.includes('recommend') || lower.includes('mitigat')) {
         if (topFixes.length > 0) {
           const list = topFixes.slice(0, 3).map((f, i) => `${i + 1}. **${f.step}**\n   ↳ *Why:* ${f.why}`).join('\n\n');
-          reply = `Here are the top priority fixes from the Sentinel Playbook Knowledge Base:\n\n${list}\n\n*AI suggestion, human review required.*`;
+          reply = `Here are the top priority fixes from the MIRAGE Playbook Knowledge Base:\n\n${list}\n\n*AI suggestion, human review required.*`;
           quickPicks = ['View all playbooks', 'Explain incident blast radius'];
         } else {
           reply = 'All monitored perimeters are currently healthy! In case of an attack, I will automatically cross-reference observed IOCs with the 11 integrated YAML playbooks to recommend verified remediation steps.';
@@ -210,13 +210,13 @@ export default function NoobAdvisorFloating() {
           reply = 'Currently, zero open uncontained incidents are flagged. The deception honeypot fleet is calm and awaiting adversary probes.';
         }
       } else if (lower.includes('gateway') || lower.includes('watch') || lower.includes('fail') || lower.includes('takedown')) {
-        reply = '⚡ **Gateway Lifecycle Protocol:**\n\nWhen a gateway route suffers a critical attack (risk >= 51), Sentinel transitions it through: **Attacked → Taken Down → Patched → Restored → Re-attack Monitored (120m Watch Mode)**. If the adversary re-attacks during watch mode, priority escalation triggers immediately.';
+        reply = '⚡ **Gateway Lifecycle Protocol:**\n\nWhen a gateway route suffers a critical attack (risk >= 51), MIRAGE transitions it through: **Attacked → Taken Down → Patched → Restored → Re-attack Monitored (120m Watch Mode)**. If the adversary re-attacks during watch mode, priority escalation triggers immediately.';
         quickPicks = ['Open Gateway Failures Page', 'Check watch timers'];
       } else if (lower.includes('contain') || lower.includes('apply')) {
         reply = '✅ **Recommended Immediate Containment Action:**\n\n• Route attacker session traffic into the high-interaction isolated decoy honeypot (`REAL → DECOY` session diversion).\n• Retain production secrets safely out of attacker reach while logging telemetry for forensics.';
         quickPicks = ['View Decoy Observation', 'Check Attacker Risk'];
       } else {
-        reply = `I have analyzed your query regarding "${text}". Sentinel's Autonomous Advisor maps real-time attack fingerprints into verified playbook remediations.\n\nKey next step: Review active incident telemetry in the Incident Queue or consult the recommended fixes tab above.`;
+        reply = `I have analyzed your query regarding "${text}". MIRAGE's Autonomous Advisor maps real-time attack fingerprints into verified playbook remediations.\n\nKey next step: Review active incident telemetry in the Incident Queue or consult the recommended fixes tab above.`;
         quickPicks = ['What should I fix first?', 'Summarize gateway health'];
       }
 

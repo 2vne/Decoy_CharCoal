@@ -372,7 +372,7 @@ async def run_latency_comparison_demo(
             "delay_applied_seconds": delay_controlled,
             "measured_response_ms": controlled_measured_ms,
             "within_bounds": (min_s * 1000 <= controlled_measured_ms + 100) and (controlled_measured_ms - 100 <= max_s * 1000),
-            "attacker_experience": f"Controlled delay applied ({delay_controlled:.2f}s). SENTINEL holds session active to observe and fingerprint behaviour.",
+            "attacker_experience": f"Controlled delay applied ({delay_controlled:.2f}s). MIRAGE holds session active to observe and fingerprint behaviour.",
         },
         "observation_benefit": {
             "time_dilation_factor": round(max(1.0, controlled_measured_ms / max(1.0, normal_measured_ms)), 1),

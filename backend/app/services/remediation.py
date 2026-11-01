@@ -373,7 +373,7 @@ async def generate_remediation_advisory(
             }
 
             system_instructions = (
-                "You are the SENTINEL Remediation Advisor. You turn incidents and gateway telemetry into suggested fixes.\n"
+                "You are the MIRAGE Remediation Advisor. You turn incidents and gateway telemetry into suggested fixes.\n"
                 "NON-NEGOTIABLE RULES:\n"
                 "1. SUGGESTIONS ONLY. Output label: 'AI suggestion, human review required'.\n"
                 "2. Do not assert an unverified root cause. Use 'likely' and give confidence.\n"

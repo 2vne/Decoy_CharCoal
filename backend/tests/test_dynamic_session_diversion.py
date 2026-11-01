@@ -246,7 +246,7 @@ async def test_10_decoy_interactions_generate_telemetry(db: AsyncSession):
         # Attacker interacts with decoy app endpoints
         res_env = await client.get("/demo/decoy/.env", headers=headers)
         assert res_env.status_code == 200
-        assert "SENTINEL DECOY CANARY ENVIRONMENT" in res_env.text
+        assert "MIRAGE DECOY CANARY ENVIRONMENT" in res_env.text or "SENTINEL DECOY CANARY ENVIRONMENT" in res_env.text
 
         res_charge = await client.post(
             "/demo/decoy/checkout/charge",

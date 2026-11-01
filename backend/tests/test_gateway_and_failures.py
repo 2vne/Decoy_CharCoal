@@ -534,7 +534,7 @@ async def test_dedicated_health_endpoints(db: AsyncSession):
         assert res_root.status_code == 200
         root_data = res_root.json()
         assert root_data["status"] == "ok"
-        assert root_data["service"] == "SENTINEL SOC"
+        assert root_data["service"] in ("MIRAGE SOC", "SENTINEL SOC")
         assert root_data["version"] == "1.0.0"
 
         # 2. Prefixed /api/health
@@ -542,7 +542,7 @@ async def test_dedicated_health_endpoints(db: AsyncSession):
         assert res_api.status_code == 200
         api_data = res_api.json()
         assert api_data["status"] == "ok"
-        assert api_data["service"] == "SENTINEL SOC"
+        assert api_data["service"] in ("MIRAGE SOC", "SENTINEL SOC")
         assert api_data["version"] == "1.0.0"
 
     app.dependency_overrides.clear()

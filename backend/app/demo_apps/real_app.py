@@ -298,7 +298,7 @@ async def real_user_dashboard(request: Request, db: AsyncSession = Depends(get_d
     await _check_diversion_guard(db, session_id, ip, token)
 
     return {
-        "app": "SENTINEL Production Portal",
+        "app": "MIRAGE Production Portal",
         "environment": "real_workload",
         "total_active_sessions": 42,
         "system_status": "operational",

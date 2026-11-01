@@ -91,7 +91,7 @@ export default function PortalApp({ initialMode = 'decoy' }) {
   if (authStep === 'otp') {
     return (
       <PortalOtp
-        email={pendingLogin?.email || 'analyst@sentinel.local'}
+        email={pendingLogin?.email || 'analyst@mirage.local'}
         basePath={basePath}
         onVerifySuccess={handleOtpSuccess}
         onBackToLogin={() => setAuthStep('login')}

@@ -97,12 +97,12 @@ async def lifespan(app: FastAPI):
             pass
 
     await async_engine.dispose()
-    logger.info("SENTINEL SOC backend shutdown complete.")
+    logger.info("MIRAGE SOC backend shutdown complete.")
 
 
 app = FastAPI(
-    title="SENTINEL SOC API",
-    description="Deception-Driven Threat Detection & Automated Response Engine",
+    title="MIRAGE Autonomous SOC Platform",
+    description="MIRAGE - Deception-Driven Cybersecurity Intelligence & Automated Incident Response Platform",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -158,13 +158,13 @@ app.include_router(ws.router, tags=["WebSocket"])
 
 @app.get("/health", tags=["Root"])
 async def root_health():
-    return {"status": "ok", "service": "SENTINEL SOC", "version": "1.0.0"}
+    return {"status": "ok", "service": "MIRAGE SOC", "version": "1.0.0"}
 
 
 @app.get("/", tags=["Root"])
 async def root():
     return {
-        "service": "SENTINEL SOC",
+        "service": "MIRAGE SOC",
         "status": "operational",
         "docs": "/docs",
         "ws": "/ws/live",

@@ -19,7 +19,7 @@ export default function PortalLogin({
   basePath,
   setBasePath,
 }) {
-  const [email, setEmail] = useState('admin@sentinel-corp.internal');
+  const [email, setEmail] = useState('admin@mirage-corp.internal');
   const [password, setPassword] = useState('AdminSecure2026!');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
@@ -96,7 +96,7 @@ export default function PortalLogin({
           </div>
           <div className="text-left">
             <span className="text-2xl font-black tracking-tight text-white block">
-              SENTINEL<span className="text-blue-400 font-normal">PORTAL</span>
+              MIRAGE<span className="text-blue-400 font-normal">PORTAL</span>
             </span>
             <span className="text-[11px] font-mono tracking-wider text-slate-400 uppercase block -mt-1">
               Enterprise Cloud & Identity
@@ -194,7 +194,7 @@ export default function PortalLogin({
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="analyst@sentinel.local"
+                  placeholder="analyst@mirage.local"
                   required
                   className="block w-full pl-9 pr-3 py-2 text-sm bg-slate-950 border border-slate-700 rounded-lg text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
                 />
@@ -296,12 +296,12 @@ export default function PortalLogin({
                 type="button"
                 onClick={() => {
                   setBasePath('/demo/real');
-                  setPresetCredentials('analyst@sentinel.local', 'Password123!');
+                  setPresetCredentials('analyst@mirage.local', 'Password123!');
                 }}
                 className="p-2 rounded bg-slate-950 border border-slate-800 hover:border-blue-500/60 text-left transition"
               >
                 <div className="font-semibold text-blue-300">Real Analyst</div>
-                <div className="text-[10px] text-slate-400 truncate">analyst@sentinel.local</div>
+                <div className="text-[10px] text-slate-400 truncate">analyst@mirage.local</div>
               </button>
             </div>
           </div>

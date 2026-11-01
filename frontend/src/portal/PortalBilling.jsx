@@ -80,7 +80,7 @@ export default function PortalBilling({ basePath }) {
         <div>
           <div className="font-semibold text-blue-950">Simulated Financial Processing Sandbox</div>
           <div className="text-blue-700 mt-0.5">
-            This checkout terminal operates in a secure testing mode. No real credit card, banking, or financial transactions are ever conducted. All interactions are evaluated by SENTINEL's telemetry engine.
+            This checkout terminal operates in a secure testing mode. No real credit card, banking, or financial transactions are ever conducted. All interactions are evaluated by MIRAGE's telemetry engine.
           </div>
         </div>
       </div>
@@ -127,7 +127,7 @@ export default function PortalBilling({ basePath }) {
             <div className="flex justify-between items-end text-[11px] text-slate-300">
               <div>
                 <div className="text-[9px] uppercase text-slate-400">Cardholder</div>
-                <div>SENTINEL HOLDINGS</div>
+                <div>MIRAGE HOLDINGS</div>
               </div>
               <div>
                 <div className="text-[9px] uppercase text-slate-400">Expires</div>

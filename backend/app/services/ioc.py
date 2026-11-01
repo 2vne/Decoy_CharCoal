@@ -106,7 +106,7 @@ def format_iocs_stix(iocs: List[Dict[str, Any]]) -> Dict[str, Any]:
             "id": indicator_id,
             "created": now_iso,
             "modified": now_iso,
-            "name": f"Sentinel SOC Deception Indicator: {item['value']}",
+            "name": f"MIRAGE SOC Deception Indicator: {item['value']}",
             "description": item["description"],
             "indicator_types": ["malicious-activity"],
             "pattern": pattern,

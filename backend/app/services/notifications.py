@@ -65,7 +65,7 @@ async def send_smtp_advisory_email(
 
     actions_text = "\n".join([f"- {a.get('step', a) if isinstance(a, dict) else a}" for a in top_actions[:3]]) or "No immediate actions required."
 
-    body_text = f"""SENTINEL SOC - Remediation Advisory Alert
+    body_text = f"""MIRAGE SOC - Remediation Advisory Alert
 
 Summary:
 {summary}
@@ -316,12 +316,12 @@ async def route_and_dispatch_notification(
 
         if channel == "pagerduty":
             recipient = target_call_phone
-            pd_summary = f"[CRITICAL ATTACK ALERT] Sentinel SOC call to {target_call_phone} - Attacker {attacker.ip} (Risk {attacker.risk_score:.0f})"
+            pd_summary = f"[CRITICAL ATTACK ALERT] MIRAGE SOC call to {target_call_phone} - Attacker {attacker.ip} (Risk {attacker.risk_score:.0f})"
             if settings.pagerduty_routing_key:
                 pd_success = await send_pagerduty_alert(
                     routing_key=settings.pagerduty_routing_key,
                     summary=pd_summary,
-                    source=f"sentinel:{attacker.ip}",
+                    source=f"mirage:{attacker.ip}",
                     severity=severity,
                     custom_details={
                         "call_recipient": target_call_phone,
@@ -333,7 +333,7 @@ async def route_and_dispatch_notification(
                 # Also trigger Twilio voice call to the call target
                 await send_twilio_voice_call(
                     to_number=target_call_phone,
-                    message=f"Sentinel SOC emergency alert. Attack launched by IP {attacker.ip}. Risk velocity {attacker.risk_score:.0f} out of 100.",
+                    message=f"MIRAGE SOC emergency alert. Attack launched by IP {attacker.ip}. Risk velocity {attacker.risk_score:.0f} out of 100.",
                 )
                 status = "sent" if pd_success else "simulated"
             else:
@@ -341,7 +341,7 @@ async def route_and_dispatch_notification(
 
         elif channel == "twilio":
             recipient = target_sms_phone
-            sms_text = f"🚨 [SENTINEL SOC] Attack alert: IP {attacker.ip} launched an attack. Risk: {attacker.risk_score:.0f}/100. Intent: {attacker.intent}. Call dispatched to {target_call_phone}."
+            sms_text = f"🚨 [MIRAGE SOC] Attack alert: IP {attacker.ip} launched an attack. Risk: {attacker.risk_score:.0f}/100. Intent: {attacker.intent}. Call dispatched to {target_call_phone}."
             if settings.twilio_account_sid and settings.twilio_auth_token:
                 tw_success = await send_twilio_sms(
                     to_number=target_sms_phone,
@@ -358,7 +358,7 @@ async def route_and_dispatch_notification(
             <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b; max-width: 600px; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px;">
                 <div style="display: flex; align-items: center; margin-bottom: 16px;">
                     <span style="font-size: 24px; margin-right: 8px;">🚨</span>
-                    <h2 style="color: #dc2626; margin: 0; font-size: 20px;">Threat Detected by Sentinel SOC</h2>
+                    <h2 style="color: #dc2626; margin: 0; font-size: 20px;">Threat Detected by MIRAGE SOC</h2>
                 </div>
                 <p style="font-size: 14px; margin: 0 0 16px 0; color: #475569;">
                     An active security threat was detected engaging monitored decoy honeypots.
@@ -391,12 +391,12 @@ async def route_and_dispatch_notification(
                 </table>
                 <div style="background-color: #fef2f2; border-left: 4px solid #ef4444; padding: 12px; border-radius: 4px; margin-bottom: 20px;">
                     <p style="margin: 0; font-size: 12px; color: #991b1b;">
-                        <strong>Action Taken:</strong> Decoy telemetry and forensics payload captured in Sentinel SOC evidence vault.
+                        <strong>Action Taken:</strong> Decoy telemetry and forensics payload captured in MIRAGE SOC evidence vault.
                     </p>
                 </div>
                 <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;">
                 <p style="font-size: 11px; color: #94a3b8; margin: 0;">
-                    Sentinel SOC Deception Platform &bull; Automated Incident Response
+                    MIRAGE SOC Deception Platform &bull; Automated Incident Response
                 </p>
             </div>
             """
@@ -406,7 +406,7 @@ async def route_and_dispatch_notification(
         elif channel == "telegram":
             recipient = settings.telegram_chat_id or "default_chat"
             if settings.telegram_bot_token and settings.telegram_chat_id:
-                text = f"🚨 *SENTINEL SOC ALERT [{severity.upper()}]*\n*Target IP:* `{attacker.ip}`\n*Risk Score:* `{attacker.risk_score:.0f}`\n\n{message}"
+                text = f"🚨 *MIRAGE SOC ALERT [{severity.upper()}]*\n*Target IP:* `{attacker.ip}`\n*Risk Score:* `{attacker.risk_score:.0f}`\n\n{message}"
                 success = await send_telegram_alert(settings.telegram_bot_token, settings.telegram_chat_id, text)
                 status = "sent" if success else "simulated"
             else:

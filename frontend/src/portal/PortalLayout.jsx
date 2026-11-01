@@ -67,7 +67,7 @@ export default function PortalLayout({
               </div>
               <div>
                 <span className="text-lg font-black tracking-tight text-white block leading-none">
-                  SENTINEL<span className="text-blue-400 font-normal">PORTAL</span>
+                  MIRAGE<span className="text-blue-400 font-normal">PORTAL</span>
                 </span>
                 <span className="text-[10px] font-mono tracking-wider text-slate-400 uppercase">
                   Enterprise Cloud Console
@@ -235,7 +235,7 @@ export default function PortalLayout({
       {/* Footer */}
       <footer className="bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-400">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row justify-between items-center gap-2">
-          <span>&copy; 2026 SENTINEL PORTAL Technologies Inc. All rights reserved.</span>
+          <span>&copy; 2026 MIRAGE PORTAL Technologies Inc. All rights reserved.</span>
           <span className="font-mono text-[11px]">Enterprise SaaS Security Platform v3.4.1</span>
         </div>
       </footer>

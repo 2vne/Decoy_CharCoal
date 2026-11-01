@@ -135,11 +135,11 @@ export default function Layout() {
         {/* Brand Header */}
         <div className="p-4 border-b border-slate-800">
           <div className="flex items-center space-x-2.5">
-            <div className="h-8 w-8 rounded bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-200">
-              <Zap className="h-4 w-4 text-slate-300" />
+            <div className="h-8 w-8 rounded bg-cyan-950/60 border border-cyan-500/40 flex items-center justify-center text-cyan-400 shadow-sm">
+              <Shield className="h-4 w-4 text-cyan-400" />
             </div>
             <div>
-              <div className="text-sm font-bold tracking-wider text-white font-mono">SENTINEL SOC</div>
+              <div className="text-sm font-bold tracking-widest text-white font-mono">MIRAGE</div>
               <div className="flex items-center space-x-1.5 mt-0.5">
                 <span className="relative flex h-1.5 w-1.5">
                   <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400"></span>
@@ -150,8 +150,8 @@ export default function Layout() {
               </div>
             </div>
           </div>
-          <div className="text-[10px] text-slate-500 font-mono mt-2 tracking-tight">
-            LIVE DECEPTION MONITORING
+          <div className="text-[10px] text-slate-400 font-mono mt-2 tracking-tight">
+            DECEPTION-DRIVEN INTELLIGENCE
           </div>
         </div>
 

@@ -151,7 +151,7 @@ export function SocProvider({ children }) {
         ws.onopen = () => {
           if (!unmounted) {
             setIsLiveConnected(true);
-            console.log(`SENTINEL SOC Live WebSocket connected to ${wsUrl}`);
+            console.log(`MIRAGE SOC Live WebSocket connected to ${wsUrl}`);
           }
         };
 

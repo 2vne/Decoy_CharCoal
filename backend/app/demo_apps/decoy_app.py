@@ -263,7 +263,7 @@ async def decoy_user_dashboard(
     _apply_decoy_headers(response, obs, session_id, "landing")
 
     return {
-        "app": "SENTINEL Production Portal",
+        "app": "MIRAGE Production Portal",
         "environment": "cloud_infrastructure",
         "total_active_sessions": 14,
         "system_status": "operational",
@@ -479,7 +479,7 @@ async def decoy_env(
 
     # Serve synthetic canary honeytoken environment variables
     return (
-        "# SENTINEL DECOY CANARY ENVIRONMENT\n"
+        "# MIRAGE DECOY CANARY ENVIRONMENT\n"
         "APP_ENV=production\n"
         "DATABASE_URL=postgres://sentinel_canary:HoneyPass991!@10.240.11.90:5432/core_db\n"
         "STRIPE_SECRET_KEY=sk_test_fake_honeytoken_stripe_key_9921\n"
@@ -645,7 +645,7 @@ async def decoy_db_dump(
     _apply_decoy_headers(response, obs, session_id, "database_api")
 
     return (
-        "-- SENTINEL CANARY HONEYTOKEN DB DUMP\n"
+        "-- MIRAGE CANARY HONEYTOKEN DB DUMP\n"
         "CREATE TABLE canary_users (id INT, email VARCHAR(64), password_hash VARCHAR(128));\n"
         "INSERT INTO canary_users VALUES (1, 'canary_admin@sentinel.fake', 'sha256$canary_fake_hash_99182');\n"
     )

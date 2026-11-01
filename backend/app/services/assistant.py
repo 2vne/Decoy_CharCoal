@@ -143,7 +143,7 @@ ASSISTANT_TOOLS_SPEC = [
         "type": "function",
         "function": {
             "name": "get_system_health",
-            "description": "Retrieve overall SENTINEL SOC operational health: backend services, database status, active firewall blocks, WebSocket broadcaster, and exposure budget.",
+            "description": "Retrieve overall MIRAGE SOC operational health: backend services, database status, active firewall blocks, WebSocket broadcaster, and exposure budget.",
             "parameters": {
                 "type": "object",
                 "properties": {},
@@ -247,7 +247,7 @@ async def execute_tool(tool_name: str, arguments: Dict[str, Any], db: AsyncSessi
                 res = await db.execute(stmt)
                 incident_record = res.scalar_one_or_none()
                 if incident_record:
-                    record_source = "Sentinel Incident Database"
+                    record_source = "MIRAGE Incident Database"
 
             # 2. Search Incident title by exact or keyword match
             if not incident_record and clean_input:
@@ -259,7 +259,7 @@ async def execute_tool(tool_name: str, arguments: Dict[str, Any], db: AsyncSessi
                 res = await db.execute(stmt)
                 incident_record = res.scalar_one_or_none()
                 if incident_record:
-                    record_source = "Sentinel Incident Database"
+                    record_source = "MIRAGE Incident Database"
 
             # 3. Search GatewayIncident table
             if not incident_record and clean_input:
@@ -517,7 +517,7 @@ async def execute_tool(tool_name: str, arguments: Dict[str, Any], db: AsyncSessi
 
             # Playbook advisory recommendations
             recommended_actions = [
-                {"step": "Enforce Firewall Perimeter Block", "why": f"Isolate malicious source IP {attacker_ip or '127.0.0.1'} via Sentinel Enforcer.", "requires_confirmation": True},
+                {"step": "Enforce Firewall Perimeter Block", "why": f"Isolate malicious source IP {attacker_ip or '127.0.0.1'} via MIRAGE Enforcer.", "requires_confirmation": True},
                 {"step": "Rotate Compromised Secrets / Tokens", "why": f"Invalidate environment variables and API keys associated with {target_func_name or 'targeted functions'}.", "requires_confirmation": False},
                 {"step": "Audit Gateway Decoy Logs", "why": "Inspect attacker reconnaissance payloads captured inside the deception sandbox.", "requires_confirmation": False},
             ]
@@ -828,12 +828,12 @@ async def run_deterministic_assistant(
                 "action_type": "block_ip",
                 "target": target_ip,
                 "impact": f"Will block IP {target_ip} via enforcer and log event to audit trail.",
-                "payload": {"ip": target_ip, "duration_minutes": 60, "reason": "Analyst request via Sentinel Assistant"},
+                "payload": {"ip": target_ip, "duration_minutes": 60, "reason": "Analyst request via MIRAGE Assistant"},
             },
             "meta": {
-                "provider": "sentinel_native",
+                "provider": "mirage_native",
                 "openai_configured": bool(settings.openai_api_key),
-                "model": "sentinel-soc-native-v1",
+                "model": "mirage-soc-native-v1",
             },
         }
 
@@ -850,9 +850,9 @@ async def run_deterministic_assistant(
                 "payload": {"session_id": "demo_session"},
             },
             "meta": {
-                "provider": "sentinel_native",
+                "provider": "mirage_native",
                 "openai_configured": bool(settings.openai_api_key),
-                "model": "sentinel-soc-native-v1",
+                "model": "mirage-soc-native-v1",
             },
         }
 
@@ -1018,7 +1018,7 @@ async def run_deterministic_assistant(
             reply_parts.append(f"**Investigation Status:**\n`{dt.get('investigation_status_label', 'Incident record not found; related telemetry not found.')}`\n")
             reply_parts.append(f"**Executive Summary:**\n{dt.get('executive_summary', 'No matching incident records or live telemetry found.')}\n")
             reply_parts.append("**Forensic Scope Checked:**")
-            reply_parts.append("- Sentinel Incident & Gateway Incident tables: 0 matching records.")
+            reply_parts.append("- MIRAGE Incident & Gateway Incident tables: 0 matching records.")
             reply_parts.append("- PagerDuty on-call manager: 0 matching alert keys.")
             reply_parts.append("- Function Intelligence & Deception Gateway telemetry: 0 correlated anomaly events.\n")
             reply_parts.append("**Recommended Action:**\nVerify the incident identifier or function target name. If this was an external event, ingest the raw telemetry into the collector pipeline.\n*(AI suggestion, human review required)*")
@@ -1094,9 +1094,9 @@ async def run_deterministic_assistant(
         "evidence": evidence_points,
         "pending_action": pending_action,
         "meta": {
-            "provider": "sentinel_native",
+            "provider": "mirage_native",
             "openai_configured": bool(settings.openai_api_key),
-            "model": "sentinel-soc-native-v1",
+            "model": "mirage-soc-native-v1",
             "disclaimer": "AI suggestion, human review required",
         },
     }
@@ -1114,7 +1114,7 @@ async def chat_with_assistant(
     """
     Main assistant chat pipeline:
     - If OPENAI_API_KEY is configured: Uses OpenAI Chat Completions API with Function Tools.
-    - If OPENAI_API_KEY is empty: Falls back directly to Sentinel Native Deterministic Engine.
+    - If OPENAI_API_KEY is empty: Falls back directly to MIRAGE Native Deterministic Engine.
     """
     if not settings.openai_api_key:
         return await run_deterministic_assistant(message, conversation_history, db)
@@ -1122,7 +1122,7 @@ async def chat_with_assistant(
     # If OpenAI Key is configured: Call OpenAI with Function Calling
     try:
         system_prompt = (
-            "You are Noob, an elite Tier-3 Autonomous SOC Security Advisor inside the SENTINEL Cybersecurity platform. "
+            "You are MIRAGE SOC Assistant, an elite Tier-3 Autonomous SOC Security Advisor inside the MIRAGE Cybersecurity platform. "
             "You have direct access to live telemetry through tools. "
             "Always call tools to gather facts before asserting answers. "
             "Label all remediation advice as 'AI suggestion, human review required'. "

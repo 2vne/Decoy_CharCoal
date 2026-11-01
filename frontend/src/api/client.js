@@ -534,7 +534,7 @@ export const api = {
   },
 
   // --------------------------------------------------------------------------
-  // SENTINEL SaaS Portal Endpoints (Decoy & Real Application Integration)
+  // MIRAGE SaaS Portal Endpoints (Decoy & Real Application Integration)
   // --------------------------------------------------------------------------
   async portalLogin(basePath = '/demo/decoy', email, password) {
     const res = await fetch(`${BASE_URL}${basePath}/auth/login`, {

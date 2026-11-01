@@ -159,7 +159,7 @@ class PagerDutyManager:
 
         if event_action == "trigger":
             payload_body["payload"] = {
-                "summary": summary or "SENTINEL Security Incident",
+                "summary": summary or "MIRAGE Security Incident",
                 "source": source,
                 "severity": severity,
                 "timestamp": utc_iso(),
@@ -595,7 +595,7 @@ async def dispatch_launch_control_pagerduty_alert(
         "operator": operator,
         "simulation_speed": speed,
         "launch_id": launch_id or token,
-        "action_required": "Operator triage on Sentinel SOC Live Monitoring",
+        "action_required": "Operator triage on MIRAGE SOC Live Monitoring",
     }
 
     return await pagerduty_manager.trigger_or_update_incident(

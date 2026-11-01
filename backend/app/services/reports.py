@@ -76,7 +76,7 @@ def generate_incident_pdf(
     elements = []
 
     # Header Banner
-    elements.append(Paragraph("SENTINEL SOC // INCIDENT REPORT", title_style))
+    elements.append(Paragraph("MIRAGE SOC // INCIDENT REPORT", title_style))
     elements.append(Paragraph(f"Deception Telemetry Analysis • Generated {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}", subtitle_style))
     elements.append(Spacer(1, 8))
     elements.append(HRFlowable(width="100%", thickness=2, color=colors.HexColor("#06b6d4"), spaceAfter=12))

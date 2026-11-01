@@ -1,6 +1,6 @@
-# SENTINEL SOC — Deception-Driven Threat Detection & Automated Response
+# MIRAGE — Deception-Driven Cybersecurity Intelligence & Automated Incident Response
 
-**SENTINEL SOC** is an enterprise-grade deception detection and automated incident response engine. It ingests honeypot telemetry from four distinct honeypot types (`cowrie`, `opencanary`, `dionaea`, `conpot`), normalizes and deduplicates events, creates persistent per-IP attacker dossiers, maps attacks to the **MITRE ATT&CK** matrix and **Cyber Kill Chain**, computes explainable risk scores (0–100), detects anomalies with Isolation Forests, correlates attacker profiles through behavioral fingerprinting, and triggers automated firewall block enforcement with timed auto-rollback.
+**MIRAGE** is an enterprise-grade deception detection and automated incident response engine. It ingests honeypot telemetry from four distinct honeypot types (`cowrie`, `opencanary`, `dionaea`, `conpot`), normalizes and deduplicates events, creates persistent per-IP attacker dossiers, maps attacks to the **MITRE ATT&CK** matrix and **Cyber Kill Chain**, computes explainable risk scores (0–100), detects anomalies with Isolation Forests, correlates attacker profiles through behavioral fingerprinting, and triggers automated firewall block enforcement with timed auto-rollback.
 
 The platform includes:
 - **Backend**: FastAPI + SQLAlchemy 2 (async SQLite/Postgres) + Pydantic v2 + WebSockets
@@ -190,7 +190,7 @@ All endpoints return JSON. Write endpoints require the `X-API-Key: changeme` hea
 
 ## Remediation Advisor & Gateway Lifecycle Management
 
-SENTINEL turns telemetry and incidents into actionable, evidence-grounded remediation advisories centered on the gateway lifecycle:
+MIRAGE turns telemetry and incidents into actionable, evidence-grounded remediation advisories centered on the gateway lifecycle:
 `operational` &rarr; `attacked` &rarr; `taken_down` &rarr; `fixing` &rarr; `restored` &rarr; `WATCH MODE` (with automated re-attack detection).
 
 ### Gateway Lifecycle Endpoints

@@ -125,7 +125,7 @@ export default function PortalOtp({
           </div>
           <div className="text-left">
             <span className="text-2xl font-black tracking-tight text-white block">
-              SENTINEL<span className="text-blue-400 font-normal">PORTAL</span>
+              MIRAGE<span className="text-blue-400 font-normal">PORTAL</span>
             </span>
             <span className="text-[11px] font-mono tracking-wider text-slate-400 uppercase block -mt-1">
               Two-Factor Authentication

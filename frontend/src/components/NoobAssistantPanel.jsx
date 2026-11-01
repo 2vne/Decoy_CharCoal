@@ -61,7 +61,7 @@ export default function NoobAssistantPanel() {
       id: 'welcome',
       role: 'assistant',
       content:
-        "**NOOB SOC ASSISTANT READY**\n\nI provide read-only forensic investigation across Sentinel telemetry, gateway routing logs, and Level-2 function targeting.\n\nAsk me to investigate an incident, profile dangerous adversaries, or explain decoy traffic diversions.",
+        "**MIRAGE SOC ASSISTANT READY**\n\nI provide read-only forensic investigation across MIRAGE telemetry, gateway routing logs, and Level-2 function targeting.\n\nAsk me to investigate an incident, profile dangerous adversaries, or explain decoy traffic diversions.",
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       tools_executed: [],
       evidence: [],
@@ -208,7 +208,7 @@ export default function NoobAssistantPanel() {
         {
           id: `err_${Date.now()}`,
           role: 'assistant',
-          content: `⚠️ **Assistant Communication Error:** ${err.message || 'Failed to reach backend assistant API.'}\n\nPlease verify that the Sentinel backend service is running on port 8000.`,
+          content: `⚠️ **Assistant Communication Error:** ${err.message || 'Failed to reach backend assistant API.'}\n\nPlease verify that the MIRAGE backend service is running on port 8000.`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           isError: true,
         },
@@ -290,7 +290,7 @@ export default function NoobAssistantPanel() {
               className="flex-1 py-1.5 px-2.5 rounded bg-red-950/80 hover:bg-red-900 border border-red-500/40 text-red-200 font-semibold flex items-center justify-center space-x-1 transition"
             >
               <Bot className="h-3.5 w-3.5" />
-              <span>Investigate with Noob</span>
+              <span>Investigate with MIRAGE</span>
             </button>
             <button
               onClick={() => {
@@ -321,7 +321,7 @@ export default function NoobAssistantPanel() {
             <Bot className="h-4 w-4 text-cyan-400" />
             <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
           </div>
-          <span>Noob SOC Assistant</span>
+          <span>MIRAGE SOC Assistant</span>
           <span className="text-[10px] text-emerald-400 bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-500/30">
             ONLINE
           </span>
@@ -341,7 +341,7 @@ export default function NoobAssistantPanel() {
               </div>
               <div>
                 <div className="font-bold text-white tracking-wide flex items-center space-x-2">
-                  <span>NOOB SOC ASSISTANT</span>
+                  <span>MIRAGE SOC ASSISTANT</span>
                   <span className="text-[10px] text-emerald-400 bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-500/30 flex items-center space-x-1">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
                     <span>ONLINE</span>
@@ -402,7 +402,7 @@ export default function NoobAssistantPanel() {
                 >
                   <div className="flex items-center space-x-1.5 text-[10px] text-slate-400 mb-1 px-1">
                     <span className="font-semibold text-slate-300">
-                      {msg.role === 'user' ? 'SOC Analyst' : 'Noob SOC Assistant'}
+                      {msg.role === 'user' ? 'SOC Analyst' : 'MIRAGE SOC Assistant'}
                     </span>
                     <span>&bull;</span>
                     <span>{msg.timestamp}</span>
@@ -601,7 +601,7 @@ export default function NoobAssistantPanel() {
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Ask Noob (e.g. 'Investigate incident: Secrets Env'). Enter to send..."
+                placeholder="Ask MIRAGE (e.g. 'Investigate incident: Secrets Env'). Enter to send..."
                 disabled={loading}
                 className="flex-1 px-3 py-2 rounded bg-slate-950 border border-slate-700 focus:border-cyan-500 focus:outline-none text-slate-100 placeholder-slate-500 text-xs transition resize-none max-h-24 leading-normal disabled:opacity-50"
               />

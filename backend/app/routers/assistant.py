@@ -108,7 +108,7 @@ async def confirm_security_action(
         from app.services.enforcer import block_attacker
         block_result = await block_attacker(
             ip=target_ip,
-            reason=payload.get("reason", "Analyst confirmed action via Sentinel Assistant"),
+            reason=payload.get("reason", "Analyst confirmed action via MIRAGE Assistant"),
             duration_minutes=payload.get("duration_minutes", 60),
             db=db,
         )

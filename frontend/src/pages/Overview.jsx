@@ -157,7 +157,7 @@ export default function Overview() {
         <div>
           <div className="flex items-center space-x-2.5">
             <h1 className="text-base font-bold text-white tracking-wider font-mono">
-              SENTINEL SOC — TACTICAL SOC OVERVIEW
+              MIRAGE — TACTICAL SOC OVERVIEW
             </h1>
             <span
               className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-medium border ${

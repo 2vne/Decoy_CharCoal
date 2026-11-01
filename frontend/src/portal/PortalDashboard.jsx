@@ -64,7 +64,7 @@ export default function PortalDashboard({
             </span>
           </div>
           <p className="text-sm text-slate-500 mt-1">
-            Logged in as <span className="font-semibold text-slate-800">{user?.email || 'analyst@sentinel.local'}</span> ({user?.role || 'Administrator'})
+            Logged in as <span className="font-semibold text-slate-800">{user?.email || 'analyst@mirage.local'}</span> ({user?.role || 'Administrator'})
           </p>
         </div>
 
