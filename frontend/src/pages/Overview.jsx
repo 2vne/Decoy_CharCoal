@@ -1,16 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Users,
   ShieldAlert,
+  ShieldCheck,
+  AlertTriangle,
   Radio,
   Server,
   Play,
   Loader2,
-  ArrowUpRight,
-  AlertTriangle,
-  Clock,
   ChevronRight,
+  RefreshCw,
+  Activity,
+  ArrowUpRight,
+  GitBranch,
+  Eye,
+  CheckCircle2,
+  Lock,
+  Clock,
+  Filter,
+  Layers,
+  Terminal,
+  Zap,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -22,7 +32,6 @@ import {
 } from 'recharts';
 import { useSoc } from '../context/SocContext';
 import { api, BASE_URL } from '../api/client';
-import { Wrench, CheckCircle2, Sparkles } from 'lucide-react';
 import ThreatUniverse from '../components/ThreatUniverse';
 
 export default function Overview() {
@@ -34,21 +43,58 @@ export default function Overview() {
     attackers,
     honeypots,
     incidents,
+    events,
     metrics,
+    isLiveConnected,
+    refreshAllData,
     runSimulation,
     setSelectedAttackerId,
     pagerdutyIncidents,
     pagerdutyStatus,
   } = useSoc();
 
-  const [simLoading, setSimLoading] = useState(false);
+  // Local state
+  const [gatewayStats, setGatewayStats] = useState(null);
   const [advisorySummary, setAdvisorySummary] = useState(null);
+  const [simLoading, setSimLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [currentTime, setCurrentTime] = useState(new Date().toUTCString());
+  const [eventCategoryFilter, setEventCategoryFilter] = useState('ALL');
+  const [showUniverseRadar, setShowUniverseRadar] = useState(false);
+
+  // Live UTC Clock updater
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date().toUTCString());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Fetch gateway stats and playbook advisory summary
+  const fetchAuxData = async () => {
+    try {
+      const [gw, adv] = await Promise.allSettled([
+        api.getGatewayStats(),
+        api.getAdvisorySummary(),
+      ]);
+      if (gw.status === 'fulfilled') setGatewayStats(gw.value);
+      if (adv.status === 'fulfilled') setAdvisorySummary(adv.value);
+    } catch (err) {
+      console.warn('Failed to load aux stats:', err.message);
+    }
+  };
 
   useEffect(() => {
-    api.getAdvisorySummary()
-      .then((data) => setAdvisorySummary(data))
-      .catch((err) => console.warn('Advisory summary load failed:', err.message));
+    fetchAuxData();
+    const interval = setInterval(fetchAuxData, 15000);
+    return () => clearInterval(interval);
   }, []);
+
+  const handleManualRefresh = async () => {
+    setRefreshing(true);
+    await Promise.allSettled([refreshAllData(), fetchAuxData()]);
+    setRefreshing(false);
+  };
 
   const handleRunDemo = async () => {
     setSimLoading(true);
@@ -59,354 +105,609 @@ export default function Overview() {
     }
   };
 
-  const criticalAttackers = attackers.filter((a) => a.risk_band === 'critical');
+  // Derive KPI metrics strictly from actual backend data
+  const activeIncidentsCount = useMemo(() => {
+    const openDb = (incidents || []).filter((i) => i.status !== 'resolved').length;
+    const openPd = (pagerdutyIncidents || []).filter((p) => p.status !== 'resolved').length;
+    return Math.max(openDb, openPd);
+  }, [incidents, pagerdutyIncidents]);
+
+  const activeAttackersCount = useMemo(() => {
+    return overview?.total_attackers ?? (attackers || []).length;
+  }, [overview, attackers]);
+
+  const criticalThreatsCount = useMemo(() => {
+    return (attackers || []).filter(
+      (a) => a.risk_score >= 76 || a.risk_band === 'critical'
+    ).length;
+  }, [attackers]);
+
+  const activeDecoySessionsCount = useMemo(() => {
+    return (
+      gatewayStats?.diverted_attackers_count ??
+      gatewayStats?.diverted_sessions_count ??
+      overview?.band_counts?.critical ??
+      0
+    );
+  }, [gatewayStats, overview]);
+
+  const gatewayRequestVolume = useMemo(() => {
+    return (
+      gatewayStats?.total_requests ??
+      overview?.total_events ??
+      metrics?.total_events ??
+      0
+    );
+  }, [gatewayStats, overview, metrics]);
+
+  // Sorted Incidents: Unresolved first, then highest risk/severity, then newest
+  const sortedIncidents = useMemo(() => {
+    return [...(incidents || [])].sort((a, b) => {
+      if (a.status !== 'resolved' && b.status === 'resolved') return -1;
+      if (a.status === 'resolved' && b.status !== 'resolved') return 1;
+      const scoreA = a.risk_score_at_creation || (a.severity === 'critical' ? 90 : 50);
+      const scoreB = b.risk_score_at_creation || (b.severity === 'critical' ? 90 : 50);
+      if (scoreB !== scoreA) return scoreB - scoreA;
+      return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+    });
+  }, [incidents]);
+
+  // Filtered Live Security Events
+  const filteredEvents = useMemo(() => {
+    if (!events || events.length === 0) return [];
+    if (eventCategoryFilter === 'ALL') return events.slice(0, 10);
+    return events
+      .filter((ev) => {
+        const cat = (ev.category || ev.event_type || '').toLowerCase();
+        if (eventCategoryFilter === 'AUTH') return cat.includes('auth') || cat.includes('login') || cat.includes('otp');
+        if (eventCategoryFilter === 'GATEWAY') return cat.includes('gateway') || cat.includes('probe') || cat.includes('recon');
+        if (eventCategoryFilter === 'DECOY') return cat.includes('decoy') || cat.includes('divert') || cat.includes('honey');
+        return true;
+      })
+      .slice(0, 10);
+  }, [events, eventCategoryFilter]);
+
+  // Attack activity over time chart data
   const chartData = metrics?.events_over_time || [];
 
-  if (loading && !overview && !backendError) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-4 font-mono">
-        <Loader2 className="h-10 w-10 text-cyan-400 animate-spin" />
-        <div className="text-sm text-cyan-300 font-bold tracking-wider animate-pulse">
-          LOADING REAL-TIME SOC TELEMETRY...
-        </div>
-        <p className="text-xs text-soc-muted">
-          Connecting to backend at {BASE_URL}
-        </p>
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-6">
-      {/* Top Banner with Action Button */}
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 font-sans text-slate-200 pb-12">
+      {/* Subtle non-blocking sync indicator */}
+      {loading && !overview && (
+        <div className="p-2 rounded bg-slate-900/60 border border-slate-800 flex items-center justify-between text-xs font-mono text-slate-400 animate-pulse">
+          <div className="flex items-center space-x-2">
+            <Loader2 className="h-3.5 w-3.5 text-cyan-400 animate-spin" />
+            <span>Syncing telemetry with backend gateway ({BASE_URL})...</span>
+          </div>
+          <span className="text-[10px] text-slate-500">Live feeds active</span>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------------ */}
+      {/* SECTION A: ENTERPRISE HEADER & CONTROLS                            */}
+      {/* ------------------------------------------------------------------ */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-800/80">
         <div>
-          <h1 className="text-xl font-bold font-mono text-white tracking-wider flex items-center space-x-2">
-            <span>TACTICAL SOC OVERVIEW</span>
-            <span className="h-2 w-2 rounded-full bg-cyan-400 animate-ping"></span>
-          </h1>
-          <p className="text-xs text-soc-muted font-mono mt-0.5">
-            Automated Deception Telemetry & Live Autonomous Response
-          </p>
+          <div className="flex items-center space-x-3">
+            <h1 className="text-lg font-bold text-white tracking-wide font-mono flex items-center space-x-2">
+              <ShieldCheck className="h-5 w-5 text-emerald-400" />
+              <span>SENTINEL SECURITY OPERATIONS CENTRE</span>
+            </h1>
+            <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-emerald-950/60 border border-emerald-500/30 text-emerald-300">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 mr-1.5 animate-pulse"></span>
+              ALL SYSTEMS OPERATIONAL
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-xs text-slate-400 font-mono">
+            <span>Enterprise Deception Grid & Dynamic Risk Gateway</span>
+            <span className="text-slate-600">&bull;</span>
+            <span className="flex items-center space-x-1.5">
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  isLiveConnected ? 'bg-emerald-400' : 'bg-amber-400'
+                }`}
+              ></span>
+              <span className={isLiveConnected ? 'text-slate-300' : 'text-amber-300'}>
+                {isLiveConnected ? 'WebSocket Live Stream' : 'Connecting WebSocket...'}
+              </span>
+            </span>
+            <span className="text-slate-600">&bull;</span>
+            <span className="text-slate-400 flex items-center space-x-1">
+              <Clock className="h-3 w-3 text-slate-500" />
+              <span>{currentTime}</span>
+            </span>
+          </div>
         </div>
 
-        <button
-          disabled={simLoading}
-          onClick={handleRunDemo}
-          className="flex items-center space-x-2 px-4 py-2 rounded bg-cyan-950 border border-cyan-400 text-cyan-200 font-mono text-xs font-bold hover:bg-cyan-900 shadow-[0_0_15px_rgba(0,240,255,0.25)] transition disabled:opacity-60"
+        {/* Operator Action Buttons */}
+        <div className="flex items-center space-x-2.5">
+          <button
+            onClick={handleManualRefresh}
+            disabled={refreshing}
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-slate-300 hover:text-white font-mono text-xs transition disabled:opacity-50"
+            title="Refresh all SOC telemetry"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+            <span>{refreshing ? 'Syncing...' : 'Refresh'}</span>
+          </button>
+
+          <button
+            onClick={handleRunDemo}
+            disabled={simLoading}
+            className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-100 font-mono text-xs font-semibold shadow-sm transition disabled:opacity-50"
+          >
+            {simLoading ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-cyan-400" />
+            ) : (
+              <Play className="h-3.5 w-3.5 fill-current text-cyan-400" />
+            )}
+            <span>{simLoading ? 'Injecting APT...' : 'Simulate Attack'}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* SECTION B: EXECUTIVE SECURITY SUMMARY (5 Compact KPI Cards)        */}
+      {/* ------------------------------------------------------------------ */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5">
+        {/* KPI 1: Active Incidents */}
+        <div
+          onClick={() => navigate('/incidents')}
+          className="p-3.5 rounded-lg bg-slate-900/90 border border-slate-800 hover:border-slate-700 cursor-pointer transition shadow-sm space-y-1"
         >
-          {simLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 fill-current" />}
-          <span>{simLoading ? 'STARTING DEMO...' : 'RUN FULL APT DEMO'}</span>
-        </button>
-      </div>
-
-      {/* PagerDuty On-Call Alerting Status Bar */}
-      <div
-        onClick={() => navigate('/incidents')}
-        className="p-3 rounded border border-soc-border bg-soc-card hover:border-red-500/50 cursor-pointer transition flex flex-col sm:flex-row sm:items-center justify-between gap-3 font-mono text-xs shadow-sm"
-      >
-        <div className="flex items-center space-x-3">
-          <div className="p-1.5 rounded bg-red-950/60 border border-red-500/40 text-red-400">
-            <Radio className="h-4 w-4 animate-pulse" />
+          <div className="flex items-center justify-between text-xs text-slate-400 font-mono">
+            <span>ACTIVE INCIDENTS</span>
+            <AlertTriangle
+              className={`h-4 w-4 ${
+                activeIncidentsCount > 0 ? 'text-amber-400' : 'text-slate-500'
+              }`}
+            />
           </div>
-          <div>
-            <div className="flex items-center space-x-2">
-              <span className="font-bold text-white tracking-wide">PAGERDUTY ON-CALL:</span>
-              <span className="text-emerald-400 font-bold uppercase">{pagerdutyStatus?.service_mode === 'operational' ? 'LIVE' : 'ACTIVE SIMULATED'}</span>
-              <span className="text-soc-muted">&bull;</span>
-              <span className="text-gray-300">Target: +91 {pagerdutyStatus?.responder_phone || '9372185727'}</span>
-            </div>
-            <div className="text-[10px] text-soc-muted mt-0.5">
-              Email: {pagerdutyStatus?.responder_email || 'danishsjain@gmail.com'} &bull; Session Deduplication: Active
-            </div>
+          <div className="flex items-baseline justify-between pt-1">
+            <span
+              className={`text-2xl font-bold font-mono ${
+                activeIncidentsCount > 0 ? 'text-amber-300' : 'text-white'
+              }`}
+            >
+              {activeIncidentsCount}
+            </span>
+            <span className="text-[10px] font-mono text-slate-400">
+              {activeIncidentsCount === 0 ? 'Clear' : 'Pending Action'}
+            </span>
           </div>
         </div>
 
-        <div className="flex items-center space-x-2">
-          {pagerdutyIncidents?.filter((i) => i.priority === 'P1' && i.status !== 'resolved').length > 0 ? (
-            <span className="px-2 py-1 rounded bg-red-950 border border-red-500 text-red-300 font-bold text-[10px] animate-pulse">
-              🚨 {pagerdutyIncidents.filter((i) => i.priority === 'P1' && i.status !== 'resolved').length} P1 CRITICAL
-            </span>
-          ) : (
-            <span className="px-2 py-1 rounded bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 font-bold text-[10px]">
-              ON-CALL HEALTHY
-            </span>
-          )}
-          <span className="text-soc-muted text-[10px] flex items-center space-x-0.5">
-            <span>Open PagerDuty</span>
-            <ChevronRight className="h-3 w-3" />
-          </span>
-        </div>
-      </div>
-
-      {/* 4 KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Active Attackers */}
+        {/* KPI 2: Active Attackers / Sessions */}
         <div
           onClick={() => navigate('/attackers')}
-          className="p-4 rounded border border-soc-border bg-soc-card hover:border-cyan-500/50 cursor-pointer transition shadow-lg group"
+          className="p-3.5 rounded-lg bg-slate-900/90 border border-slate-800 hover:border-slate-700 cursor-pointer transition shadow-sm space-y-1"
         >
-          <div className="flex items-center justify-between text-soc-muted">
-            <span className="text-xs font-mono uppercase tracking-wider">Active Attackers</span>
-            <Users className="h-4 w-4 text-cyan-400 group-hover:scale-110 transition" />
+          <div className="flex items-center justify-between text-xs text-slate-400 font-mono">
+            <span>ATTACKER PROFILES</span>
+            <Server className="h-4 w-4 text-slate-400" />
           </div>
-          <div className="mt-2 flex items-baseline space-x-2">
+          <div className="flex items-baseline justify-between pt-1">
             <span className="text-2xl font-bold font-mono text-white">
-              {overview?.total_attackers ?? attackers.length}
+              {activeAttackersCount}
             </span>
-            <span className="text-[10px] font-mono text-emerald-400 font-medium">Profiles Tracked</span>
+            <span className="text-[10px] font-mono text-slate-400">Tracked IPs</span>
           </div>
         </div>
 
-        {/* Critical Threats */}
+        {/* KPI 3: Critical Threats */}
         <div
-          onClick={() => {
-            if (criticalAttackers.length > 0) {
-              setSelectedAttackerId(criticalAttackers[0].id);
-            } else {
-              navigate('/attackers');
-            }
-          }}
-          className="p-4 rounded border border-soc-border bg-soc-card hover:border-red-500/50 cursor-pointer transition shadow-lg group"
+          onClick={() => navigate('/attackers')}
+          className="p-3.5 rounded-lg bg-slate-900/90 border border-slate-800 hover:border-red-500/40 cursor-pointer transition shadow-sm space-y-1"
         >
-          <div className="flex items-center justify-between text-soc-muted">
-            <span className="text-xs font-mono uppercase tracking-wider">Critical Threats</span>
-            <ShieldAlert className="h-4 w-4 text-red-400 group-hover:scale-110 transition" />
+          <div className="flex items-center justify-between text-xs text-slate-400 font-mono">
+            <span>CRITICAL THREATS</span>
+            <ShieldAlert className="h-4 w-4 text-red-400" />
           </div>
-          <div className="mt-2 flex items-baseline space-x-2">
+          <div className="flex items-baseline justify-between pt-1">
             <span className="text-2xl font-bold font-mono text-red-400">
-              {overview?.band_counts?.critical ?? criticalAttackers.length}
+              {criticalThreatsCount}
             </span>
-            <span className="text-[10px] font-mono text-red-300 font-medium bg-red-950/60 px-1.5 py-0.5 rounded border border-red-500/30">
-              &ge; 76 Risk
+            <span className="text-[10px] font-mono text-red-300 bg-red-950/60 px-1.5 py-0.5 rounded border border-red-500/30">
+              Risk &ge; 76
             </span>
           </div>
         </div>
 
-        {/* Events Today */}
+        {/* KPI 4: Active Decoy Sessions */}
         <div
-          onClick={() => navigate('/events')}
-          className="p-4 rounded border border-soc-border bg-soc-card hover:border-cyan-500/50 cursor-pointer transition shadow-lg group"
+          onClick={() => navigate('/gateway')}
+          className="p-3.5 rounded-lg bg-slate-900/90 border border-slate-800 hover:border-slate-700 cursor-pointer transition shadow-sm space-y-1"
         >
-          <div className="flex items-center justify-between text-soc-muted">
-            <span className="text-xs font-mono uppercase tracking-wider">Events Today</span>
-            <Radio className="h-4 w-4 text-cyber-blue group-hover:scale-110 transition" />
+          <div className="flex items-center justify-between text-xs text-slate-400 font-mono">
+            <span>DECOY SESSIONS</span>
+            <GitBranch className="h-4 w-4 text-cyan-400" />
           </div>
-          <div className="mt-2 flex items-baseline space-x-2">
+          <div className="flex items-baseline justify-between pt-1">
+            <span className="text-2xl font-bold font-mono text-cyan-300">
+              {activeDecoySessionsCount}
+            </span>
+            <span className="text-[10px] font-mono text-emerald-400">Isolated</span>
+          </div>
+        </div>
+
+        {/* KPI 5: Gateway Request Volume */}
+        <div
+          onClick={() => navigate('/gateway')}
+          className="p-3.5 rounded-lg bg-slate-900/90 border border-slate-800 hover:border-slate-700 cursor-pointer transition shadow-sm space-y-1 col-span-2 md:col-span-1"
+        >
+          <div className="flex items-center justify-between text-xs text-slate-400 font-mono">
+            <span>GATEWAY TRAFFIC</span>
+            <Activity className="h-4 w-4 text-slate-400" />
+          </div>
+          <div className="flex items-baseline justify-between pt-1">
             <span className="text-2xl font-bold font-mono text-white">
-              {overview?.events_today ?? 0}
+              {gatewayRequestVolume}
             </span>
-            <span className="text-[10px] font-mono text-soc-muted">Total: {overview?.total_events ?? 0}</span>
-          </div>
-        </div>
-
-        {/* Honeypots Healthy */}
-        <div
-          onClick={() => navigate('/honeypots')}
-          className="p-4 rounded border border-soc-border bg-soc-card hover:border-emerald-500/50 cursor-pointer transition shadow-lg group"
-        >
-          <div className="flex items-center justify-between text-soc-muted">
-            <span className="text-xs font-mono uppercase tracking-wider">Honeypots Fleet</span>
-            <Server className="h-4 w-4 text-emerald-400 group-hover:scale-110 transition" />
-          </div>
-          <div className="mt-2 flex items-baseline space-x-2">
-            <span className="text-2xl font-bold font-mono text-emerald-400">
-              {overview?.honeypots_healthy ?? honeypots.filter((h) => h.status === 'running').length}/{honeypots.length || 4}
-            </span>
-            <span className="text-[10px] font-mono text-emerald-300 bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-500/30 font-medium">
-              {overview?.honeypots_healthy && overview.honeypots_healthy === (honeypots.length || 4) ? '100% ONLINE' : 'OPERATIONAL'}
-            </span>
+            <span className="text-[10px] font-mono text-slate-400">Total Ingested</span>
           </div>
         </div>
       </div>
 
-      {/* Remediation Advisor Overview Card */}
-      {advisorySummary && advisorySummary.top_recurring_fixes?.length > 0 && (
-        <div className="p-4 rounded-lg border border-purple-500/30 bg-purple-950/20 font-mono text-xs space-y-2.5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <div className="p-1 rounded bg-purple-900/60 border border-purple-500/50 text-purple-300">
-                <Wrench className="h-4 w-4" />
+      {/* ------------------------------------------------------------------ */}
+      {/* SECTION C: INCIDENT OVERVIEW (Professional Table)                  */}
+      {/* ------------------------------------------------------------------ */}
+      <div className="rounded-lg bg-slate-900/90 border border-slate-800 overflow-hidden shadow-sm">
+        <div className="p-3.5 border-b border-slate-800 flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <AlertTriangle className="h-4 w-4 text-amber-400" />
+            <span className="font-mono text-xs font-bold text-white uppercase tracking-wider">
+              Security Incidents Queue
+            </span>
+            <span className="text-[10px] font-mono text-slate-400 bg-slate-800 px-2 py-0.5 rounded border border-slate-700">
+              {sortedIncidents.length} Records
+            </span>
+          </div>
+
+          <button
+            onClick={() => navigate('/incidents')}
+            className="text-xs font-mono text-slate-400 hover:text-white flex items-center space-x-1 transition"
+          >
+            <span>Full Incident Queue</span>
+            <ChevronRight className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left font-mono text-xs border-collapse">
+            <thead>
+              <tr className="bg-slate-950/60 border-b border-slate-800/80 text-[11px] text-slate-400 uppercase tracking-wider">
+                <th className="py-2.5 px-3.5">Severity</th>
+                <th className="py-2.5 px-3.5">Incident Title</th>
+                <th className="py-2.5 px-3.5">Target / Session</th>
+                <th className="py-2.5 px-3.5">Detection Source</th>
+                <th className="py-2.5 px-3.5">Status</th>
+                <th className="py-2.5 px-3.5">Detected At</th>
+                <th className="py-2.5 px-3.5 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/60">
+              {sortedIncidents.length > 0 ? (
+                sortedIncidents.slice(0, 5).map((inc) => {
+                  const isCritical =
+                    inc.severity === 'critical' || (inc.risk_score_at_creation && inc.risk_score_at_creation >= 76);
+                  const isHigh = inc.severity === 'high' || (inc.risk_score_at_creation && inc.risk_score_at_creation >= 51);
+                  const isResolved = inc.status === 'resolved';
+
+                  return (
+                    <tr
+                      key={inc.id}
+                      className="hover:bg-slate-800/40 transition group"
+                    >
+                      {/* Severity */}
+                      <td className="py-2.5 px-3.5">
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                            isCritical
+                              ? 'bg-red-950/80 text-red-300 border border-red-500/40'
+                              : isHigh
+                              ? 'bg-amber-950/80 text-amber-300 border border-amber-500/40'
+                              : 'bg-slate-800 text-slate-300 border border-slate-700'
+                          }`}
+                        >
+                          {inc.severity || (isCritical ? 'CRITICAL' : 'HIGH')}
+                        </span>
+                      </td>
+
+                      {/* Title */}
+                      <td className="py-2.5 px-3.5 max-w-xs font-medium text-slate-200">
+                        <div className="truncate group-hover:text-white transition">
+                          {inc.title}
+                        </div>
+                      </td>
+
+                      {/* Associated Visitor / Session */}
+                      <td className="py-2.5 px-3.5 text-slate-400">
+                        {inc.attacker_id ? (
+                          <button
+                            onClick={() => setSelectedAttackerId(inc.attacker_id)}
+                            className="text-cyan-400 hover:underline flex items-center space-x-1"
+                          >
+                            <span>IP #{inc.attacker_id}</span>
+                          </button>
+                        ) : (
+                          <span className="text-slate-500">Gateway Session</span>
+                        )}
+                      </td>
+
+                      {/* Detection Source */}
+                      <td className="py-2.5 px-3.5 text-slate-400 text-[11px]">
+                        Deception Gateway
+                      </td>
+
+                      {/* Status */}
+                      <td className="py-2.5 px-3.5">
+                        <span
+                          className={`inline-block px-1.5 py-0.5 rounded text-[10px] uppercase font-semibold ${
+                            isResolved
+                              ? 'bg-emerald-950/40 text-emerald-300 border border-emerald-500/30'
+                              : 'bg-amber-950/40 text-amber-300 border border-amber-500/30'
+                          }`}
+                        >
+                          {inc.status}
+                        </span>
+                      </td>
+
+                      {/* Timestamp */}
+                      <td className="py-2.5 px-3.5 text-slate-400 text-[11px]">
+                        {inc.created_at ? new Date(inc.created_at).toLocaleTimeString() : 'Recent'}
+                      </td>
+
+                      {/* Inspect Action */}
+                      <td className="py-2.5 px-3.5 text-right">
+                        <button
+                          onClick={() => {
+                            if (inc.attacker_id) setSelectedAttackerId(inc.attacker_id);
+                            else navigate('/incidents');
+                          }}
+                          className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] transition inline-flex items-center space-x-1"
+                        >
+                          <span>Inspect</span>
+                          <ChevronRight className="h-3 w-3" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td colSpan={7} className="py-8 text-center text-slate-500 font-mono text-xs">
+                    No open security incidents recorded. Deception telemetry is nominal.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* SECTION D & E: LIVE ACTIVITY STREAM + THREAT INTELLIGENCE RADAR     */}
+      {/* ------------------------------------------------------------------ */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        {/* SECTION D: Compact Real-Time Event Stream (2 Columns) */}
+        <div className="lg:col-span-2 rounded-lg bg-slate-900/90 border border-slate-800 p-4 space-y-3 shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
+            <div>
+              <div className="font-mono text-xs font-bold text-white uppercase tracking-wider flex items-center space-x-2">
+                <Radio className="h-4 w-4 text-cyan-400" />
+                <span>Live Security Telemetry Feed</span>
               </div>
-              <span className="font-bold text-white tracking-wide flex items-center gap-1.5">
-                REMEDIATION ADVISOR &bull; TOP FIXES
-                <span className="text-[10px] text-purple-300 bg-purple-950 px-1.5 py-0.5 rounded border border-purple-500/30">
-                  AI suggestion, human review required
-                </span>
-              </span>
+              <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+                Real-time honeypot, authentication, and gateway sensor telemetry
+              </p>
             </div>
+
+            {/* Event Category Filter Pills */}
+            <div className="flex items-center space-x-1 font-mono text-[10px]">
+              {['ALL', 'AUTH', 'GATEWAY', 'DECOY'].map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => setEventCategoryFilter(cat)}
+                  className={`px-2 py-0.5 rounded border transition ${
+                    eventCategoryFilter === cat
+                      ? 'bg-slate-800 border-slate-600 text-white font-bold'
+                      : 'bg-slate-950/50 border-slate-800 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Event Stream List */}
+          <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+            {filteredEvents.length > 0 ? (
+              filteredEvents.map((ev, idx) => {
+                const isCrit = ev.severity === 'critical' || (ev.risk_score && ev.risk_score >= 76);
+                const isHigh = ev.severity === 'high' || (ev.risk_score && ev.risk_score >= 51);
+
+                return (
+                  <div
+                    key={ev.id || idx}
+                    className="p-2.5 rounded bg-slate-950/60 border border-slate-800/80 hover:border-slate-700 transition flex items-center justify-between gap-3 text-xs font-mono"
+                  >
+                    <div className="flex items-center space-x-2.5 min-w-0">
+                      <span
+                        className={`h-2 w-2 rounded-full shrink-0 ${
+                          isCrit
+                            ? 'bg-red-400'
+                            : isHigh
+                            ? 'bg-amber-400'
+                            : 'bg-cyan-400'
+                        }`}
+                      ></span>
+                      <div className="truncate">
+                        <span className="font-semibold text-slate-200 mr-2">
+                          {ev.event_type || ev.category || 'Security Event'}
+                        </span>
+                        <span className="text-slate-400 text-[11px]">
+                          from IP {ev.src_ip || '127.0.0.1'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center space-x-3 text-[11px] text-slate-400 shrink-0">
+                      <span className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300">
+                        {ev.honeypot_type || 'gateway'}
+                      </span>
+                      <span>
+                        {ev.timestamp ? new Date(ev.timestamp).toLocaleTimeString() : 'Now'}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="text-center py-10 font-mono text-xs text-slate-500">
+                Awaiting telemetry events from gateway and honeypot fleet...
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* SECTION E: Threat Intelligence Card (1 Column) */}
+        <div className="rounded-lg bg-slate-900/90 border border-slate-800 p-4 space-y-3.5 shadow-sm flex flex-col justify-between">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+              <div className="font-mono text-xs font-bold text-white uppercase tracking-wider flex items-center space-x-2">
+                <Layers className="h-4 w-4 text-slate-400" />
+                <span>Threat Intelligence</span>
+              </div>
+              <button
+                onClick={() => navigate('/universe')}
+                className="text-[11px] font-mono text-cyan-400 hover:text-cyan-300 flex items-center space-x-1"
+              >
+                <span>Threat Radar</span>
+                <ArrowUpRight className="h-3 w-3" />
+              </button>
+            </div>
+
+            {/* Top Threat Adversaries List */}
+            <div className="space-y-2">
+              <div className="text-[11px] text-slate-400 font-mono uppercase tracking-wider">
+                Top Priority Adversary Dossiers
+              </div>
+              {(attackers || []).length > 0 ? (
+                (attackers || []).slice(0, 3).map((att) => (
+                  <div
+                    key={att.id}
+                    onClick={() => setSelectedAttackerId(att.id)}
+                    className="p-2.5 rounded bg-slate-950/60 border border-slate-800/80 hover:border-slate-700 cursor-pointer transition text-xs font-mono space-y-1"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-white font-semibold">{att.ip}</span>
+                      <span
+                        className={`text-[10px] font-bold ${
+                          (att.risk_score || 0) >= 76
+                            ? 'text-red-400'
+                            : (att.risk_score || 0) >= 51
+                            ? 'text-amber-400'
+                            : 'text-emerald-400'
+                        }`}
+                      >
+                        {att.risk_score ?? 0}/100 Risk
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-400 flex items-center justify-between">
+                      <span>Intent: {att.intent || 'Reconnaissance'}</span>
+                      <span className="text-cyan-400 hover:underline">Inspect &rarr;</span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-[11px] text-slate-500 py-3 text-center">
+                  Zero critical adversary profiles currently detected.
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Quick Toggle for Radar Preview */}
+          <div className="pt-2 border-t border-slate-800/80">
             <button
-              onClick={() => navigate('/incidents')}
-              className="text-[11px] text-purple-300 hover:text-white flex items-center space-x-1"
+              onClick={() => setShowUniverseRadar(!showUniverseRadar)}
+              className="w-full py-2 rounded bg-slate-800/80 hover:bg-slate-800 border border-slate-700 text-xs font-mono text-slate-200 font-medium transition flex items-center justify-center space-x-1.5"
             >
-              <span>View All Incident Advisories</span>
-              <ChevronRight className="h-3 w-3" />
+              <Eye className="h-3.5 w-3.5 text-cyan-400" />
+              <span>{showUniverseRadar ? 'Hide Orbital Radar' : 'Expand Orbital Radar View'}</span>
             </button>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1">
-            {advisorySummary.top_recurring_fixes.slice(0, 2).map((fix, idx) => (
-              <div key={idx} className="p-2 rounded bg-slate-900/80 border border-slate-800 flex items-start space-x-2">
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 mt-0.5 flex-shrink-0" />
-                <div className="space-y-0.5 min-w-0">
-                  <div className="text-white font-medium truncate">{fix.step}</div>
-                  <div className="text-[10px] text-slate-400 truncate">{fix.why}</div>
+        </div>
+      </div>
+
+      {/* Expandable Threat Universe Radar (If activated by analyst) */}
+      {showUniverseRadar && (
+        <div className="rounded-lg bg-slate-900 border border-slate-800 p-4 space-y-2 animate-slide-in shadow-lg">
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-xs font-bold text-white uppercase tracking-wider">
+              Threat Universe Orbital Radar (Active Entity Gravity)
+            </span>
+            <button
+              onClick={() => navigate('/universe')}
+              className="text-xs font-mono text-cyan-400 hover:underline"
+            >
+              Open Fullscreen Workspace &rarr;
+            </button>
+          </div>
+          <ThreatUniverse height={340} isPreview={true} onExpand={() => navigate('/universe')} />
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------------ */}
+      {/* SECTION F: REMEDIATION RECOMMENDATIONS (Compact Enterprise Card)   */}
+      {/* ------------------------------------------------------------------ */}
+      {advisorySummary && advisorySummary.top_recurring_fixes?.length > 0 && (
+        <div className="rounded-lg bg-slate-900/90 border border-slate-800 p-4 space-y-3 shadow-sm font-mono text-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
+            <div className="flex items-center space-x-2">
+              <Wrench className="h-4 w-4 text-slate-400" />
+              <span className="font-bold text-white uppercase tracking-wider">
+                Prioritized Remediation Recommendations
+              </span>
+              <span className="text-[10px] text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700">
+                AI suggestion, human review required
+              </span>
+            </div>
+
+            <button
+              onClick={() => navigate('/incidents')}
+              className="text-[11px] text-slate-400 hover:text-white flex items-center space-x-1 transition"
+            >
+              <span>View All 11 Playbooks</span>
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          {/* Compact Fix Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+            {(advisorySummary?.top_recurring_fixes || []).slice(0, 4).map((fix, idx) => (
+              <div
+                key={idx}
+                className="p-3 rounded bg-slate-950/60 border border-slate-800 flex items-start space-x-3"
+              >
+                <CheckCircle2 className="h-4 w-4 text-emerald-400 mt-0.5 shrink-0" />
+                <div className="space-y-1 min-w-0">
+                  <div className="text-slate-100 font-semibold">{fix.step}</div>
+                  <div className="text-[11px] text-slate-400 line-clamp-2">
+                    {fix.why}
+                  </div>
+                  <div className="flex items-center space-x-3 pt-1 text-[10px] text-slate-500">
+                    <span>Source: {fix.playbook_id || 'Playbook'}</span>
+                    <span>&bull;</span>
+                    <span className="text-amber-400">High Priority</span>
+                  </div>
                 </div>
               </div>
             ))}
           </div>
         </div>
       )}
-
-      {/* Threat Universe Preview Banner */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <h2 className="text-sm font-bold font-mono text-white uppercase tracking-wider">
-              Threat Universe Orbital Radar
-            </h2>
-            <span className="text-[11px] font-mono text-soc-muted">
-              (High risk entities gravitate towards the core sun)
-            </span>
-          </div>
-          <button
-            onClick={() => navigate('/universe')}
-            className="text-xs font-mono text-cyan-400 hover:text-cyan-300 flex items-center space-x-1"
-          >
-            <span>FULLSCREEN VIEW</span>
-            <ArrowUpRight className="h-3.5 w-3.5" />
-          </button>
-        </div>
-
-        <ThreatUniverse
-          height={380}
-          isPreview={true}
-          onExpand={() => navigate('/universe')}
-        />
-      </div>
-
-      {/* Bottom Grid: Activity Chart & Recent Incidents */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* 2 Cols: Attack Activity Over Time */}
-        <div className="lg:col-span-2 p-5 rounded border border-soc-border bg-soc-card space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-xs font-bold font-mono text-white uppercase tracking-wider">
-                Deception Ingestion Telemetry
-              </h3>
-              <p className="text-[11px] font-mono text-soc-muted">Hourly honeypot event density</p>
-            </div>
-            <div className="flex items-center space-x-2 text-[10px] font-mono text-cyan-400">
-              <span className="h-2 w-2 rounded-full bg-cyan-400"></span>
-              <span>LIVE RATE</span>
-            </div>
-          </div>
-
-          <div className="h-56 w-full">
-            {chartData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData}>
-                  <defs>
-                    <linearGradient id="cyberArea" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#00f0ff" stopOpacity={0.35} />
-                      <stop offset="95%" stopColor="#00f0ff" stopOpacity={0.0} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis
-                    dataKey="hour"
-                    stroke="#64748b"
-                    fontSize={10}
-                    tickLine={false}
-                    fontFamily="JetBrains Mono"
-                  />
-                  <YAxis
-                    stroke="#64748b"
-                    fontSize={10}
-                    tickLine={false}
-                    fontFamily="JetBrains Mono"
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#0b0f17',
-                      border: '1px solid #1b253b',
-                      borderRadius: '4px',
-                      fontFamily: 'JetBrains Mono',
-                      fontSize: '11px',
-                    }}
-                    itemStyle={{ color: '#00f0ff' }}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="count"
-                    stroke="#00f0ff"
-                    strokeWidth={2}
-                    fillOpacity={1}
-                    fill="url(#cyberArea)"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-full flex flex-col items-center justify-center text-xs font-mono text-soc-muted space-y-1">
-                <span>No hourly telemetry recorded yet</span>
-                <span className="text-[10px]">Awaiting honeypot telemetry stream from backend</span>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* 1 Col: Recent Critical Incidents */}
-        <div className="p-5 rounded border border-soc-border bg-soc-card flex flex-col justify-between">
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-bold font-mono text-white uppercase tracking-wider">
-                Active Incidents
-              </h3>
-              <span className="text-[10px] font-mono text-red-400 bg-red-950/60 px-2 py-0.5 rounded border border-red-500/30">
-                {incidents.length} TICKETS
-              </span>
-            </div>
-
-            <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-              {incidents.length > 0 ? (
-                incidents.slice(0, 4).map((inc) => (
-                  <div
-                    key={inc.id}
-                    onClick={() => {
-                      if (inc.attacker_id) setSelectedAttackerId(inc.attacker_id);
-                    }}
-                    className="p-2.5 rounded bg-soc-surface border border-soc-border hover:border-red-500/50 cursor-pointer transition text-xs font-mono space-y-1"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-white truncate max-w-[180px]">
-                        {inc.title}
-                      </span>
-                      <span className="text-[10px] uppercase font-bold text-red-400">
-                        {inc.status}
-                      </span>
-                    </div>
-                    <div className="text-[10px] text-soc-muted flex items-center justify-between">
-                      <span>Created {new Date(inc.created_at).toLocaleTimeString()}</span>
-                      <span className="text-cyan-400 flex items-center">
-                        Investigate <ChevronRight className="h-3 w-3 ml-0.5" />
-                      </span>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="text-xs font-mono text-soc-muted text-center py-8">
-                  No open incidents. All decoy surfaces calm.
-                </div>
-              )}
-            </div>
-          </div>
-
-          <button
-            onClick={() => navigate('/incidents')}
-            className="w-full mt-4 py-2 rounded bg-soc-surface border border-soc-border hover:border-cyan-500/50 text-xs font-mono text-cyan-300 font-medium transition"
-          >
-            VIEW INCIDENT QUEUE &rarr;
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

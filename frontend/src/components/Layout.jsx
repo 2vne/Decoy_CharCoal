@@ -28,7 +28,8 @@ import {
 import { useSoc } from '../context/SocContext';
 import { BASE_URL } from '../api/client';
 import AttackerInvestigation from './AttackerInvestigation';
-import NoobAdvisorFloating from './NoobAdvisorFloating';
+import NoobAssistantPanel from './NoobAssistantPanel';
+import ErrorBoundary from './ErrorBoundary';
 
 export default function Layout() {
   const {
@@ -328,7 +329,9 @@ export default function Layout() {
               </button>
             </div>
           )}
-          <Outlet />
+          <ErrorBoundary>
+            <Outlet />
+          </ErrorBoundary>
         </main>
       </div>
 
@@ -340,8 +343,8 @@ export default function Layout() {
         />
       )}
 
-      {/* Floating noob Remediation Advisor in Bottom-Right Corner */}
-      <NoobAdvisorFloating />
+      {/* Professional Collapsible Noob SOC Assistant Panel */}
+      <NoobAssistantPanel />
     </div>
   );
 }

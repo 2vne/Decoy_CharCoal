@@ -33,6 +33,7 @@ from app.routers import (
     gateways,
     advisory,
     gateway_endpoints,
+    assistant,
 )
 from app.demo_apps.real_app import router as real_app_router
 from app.demo_apps.decoy_app import router as decoy_app_router
@@ -148,6 +149,7 @@ app.include_router(git_intelligence.router, prefix="/api", tags=["Git Intelligen
 app.include_router(pagerduty.router, prefix="/api", tags=["PagerDuty Integration"])
 app.include_router(gateways.router, prefix="/api", tags=["Gateway Lifecycle & Verification"])
 app.include_router(advisory.router, prefix="/api", tags=["Remediation Advisor"])
+app.include_router(assistant.router, prefix="/api", tags=["SOC Intelligent Assistant"])
 app.include_router(gateway_endpoints.router, prefix="/api", tags=["Protected Gateways Traffic"])
 app.include_router(gateway_endpoints.router, tags=["Protected Gateways Traffic Root"])
 app.include_router(simulate.router, prefix="/api", tags=["Simulation"])

@@ -731,4 +731,37 @@ export const api = {
     const res = await fetch(`${BASE_URL}/api/advisory/summary`);
     return handleResponse(res);
   },
+
+  // Intelligent Context-Aware SOC Assistant (Noob)
+  async assistantChat(message, conversationHistory = []) {
+    const res = await fetch(`${BASE_URL}/api/assistant/chat`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ message, conversation_history: conversationHistory }),
+    });
+    return handleResponse(res);
+  },
+
+  async getAssistantTools() {
+    const res = await fetch(`${BASE_URL}/api/assistant/tools`);
+    return handleResponse(res);
+  },
+
+  async confirmAssistantAction(actionType, payload, confirmed = true) {
+    const res = await fetch(`${BASE_URL}/api/assistant/confirm-action`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ action_type: actionType, payload, confirmed }),
+    });
+    return handleResponse(res);
+  },
+
+  async executeAssistantTool(toolName, args = {}) {
+    const res = await fetch(`${BASE_URL}/api/assistant/execute-tool`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ tool_name: toolName, arguments: args }),
+    });
+    return handleResponse(res);
+  },
 };
