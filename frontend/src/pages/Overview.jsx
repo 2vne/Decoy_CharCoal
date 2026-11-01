@@ -21,6 +21,7 @@ import {
   Layers,
   Terminal,
   Zap,
+  Wrench,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
