@@ -402,7 +402,7 @@ export default function NoobAssistantPanel() {
                 >
                   <div className="flex items-center space-x-1.5 text-[10px] text-slate-400 mb-1 px-1">
                     <span className="font-semibold text-slate-300">
-                      {msg.role === 'user' ? 'SOC Analyst' : 'MIRAGE SOC Assistant'}
+                      {msg.role === 'user' ? 'SOC Analyst' : 'Noob SOC Assistant'}
                     </span>
                     <span>&bull;</span>
                     <span>{msg.timestamp}</span>
@@ -601,7 +601,7 @@ export default function NoobAssistantPanel() {
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Ask MIRAGE (e.g. 'Investigate incident: Secrets Env'). Enter to send..."
+                placeholder="Ask Noob (e.g. 'Investigate incident: Secrets Env'). Enter to send..."
                 disabled={loading}
                 className="flex-1 px-3 py-2 rounded bg-slate-950 border border-slate-700 focus:border-cyan-500 focus:outline-none text-slate-100 placeholder-slate-500 text-xs transition resize-none max-h-24 leading-normal disabled:opacity-50"
               />
