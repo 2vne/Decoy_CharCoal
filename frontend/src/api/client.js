@@ -84,29 +84,30 @@ export const api = {
   },
 
   async checkHealth() {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3000);
-      let res;
-      try {
-        res = await fetch(`${BASE_URL}/api/health`, { signal: controller.signal });
-      } catch {
+    const candidateBases = [
+      BASE_URL,
+      BASE_URL.includes('localhost') ? BASE_URL.replace('localhost', '127.0.0.1') : BASE_URL.replace('127.0.0.1', 'localhost'),
+    ];
+    const uniqueBases = Array.from(new Set(candidateBases));
+    const endpoints = ['/api/health', '/health', '/api/overview'];
+
+    for (const base of uniqueBases) {
+      for (const ep of endpoints) {
         try {
-          res = await fetch(`${BASE_URL}/health`, { signal: controller.signal });
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 2500);
+          const res = await fetch(`${base}${ep}`, { signal: controller.signal });
+          clearTimeout(timeoutId);
+          if (res && res.ok) {
+            const data = await res.json().catch(() => ({}));
+            return { ok: true, data };
+          }
         } catch {
-          res = null;
+          // Continue to next probe
         }
-      } finally {
-        clearTimeout(timeoutId);
       }
-      if (res && res.ok) {
-        const data = await res.json().catch(() => ({}));
-        return { ok: true, data };
-      }
-      return { ok: false, status: res ? res.status : 0 };
-    } catch (err) {
-      return { ok: false, error: err.message };
     }
+    return { ok: false, status: 0, error: 'Health probe failed on all endpoints' };
   },
 
   async getOverview() {
