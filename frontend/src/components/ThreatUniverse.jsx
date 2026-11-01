@@ -212,6 +212,33 @@ export default function ThreatUniverse({ height = 650, isPreview = false, onExpa
     return [...list].sort((a, b) => (b.total_events || 0) - (a.total_events || 0));
   }, [attackers, activeBandFilter, activeFuncFilter, searchTerm]);
 
+  // 3D Celestial Visible Nodes:
+  // Preserves ALL Critical and High threats.
+  // In the aggregate "all" view, declutters orbital congestion by pruning ONLY 1-2 redundant,
+  // low-priority (medium or low severity) decorative nodes with zero/lowest event counts.
+  const celestialPlanets = useMemo(() => {
+    let list = displayedAttackers;
+    if (activeBandFilter === 'all' && list.length > 6) {
+      // Find candidate redundant low/medium nodes
+      const redundantCandidates = list
+        .filter(
+          (a) =>
+            (a.risk_band === 'low' || a.risk_band === 'medium' || a.risk_band === 'normal') &&
+            (a.total_events || 0) <= 1
+        )
+        .sort(
+          (a, b) =>
+            (a.total_events || 0) - (b.total_events || 0) ||
+            (a.risk_score || 0) - (b.risk_score || 0)
+        );
+
+      // Remove ONLY 1-2 redundant low-priority nodes from 3D representation
+      const omitIds = new Set(redundantCandidates.slice(0, 2).map((a) => a.id));
+      list = list.filter((a) => !omitIds.has(a.id));
+    }
+    return list;
+  }, [displayedAttackers, activeBandFilter]);
+
   const threatCounts = useMemo(() => {
     const c = { total: (attackers || []).length, critical: 0, high: 0, medium: 0, low: 0 };
     (attackers || []).forEach((a) => {
@@ -474,7 +501,7 @@ export default function ThreatUniverse({ height = 650, isPreview = false, onExpa
     if (!scene) return;
 
     const planetsMap = planetsMapRef.current;
-    const activeIds = new Set(displayedAttackers.map((a) => a.id));
+    const activeIds = new Set(celestialPlanets.map((a) => a.id));
 
     // Remove deleted planets
     planetsMap.forEach((obj, id) => {
@@ -487,14 +514,38 @@ export default function ThreatUniverse({ height = 650, isPreview = false, onExpa
       }
     });
 
+    const goldenAngle = Math.PI * (3 - Math.sqrt(5)); // ~137.5 degrees for optimal dispersion
+
     // Add or update planets
-    displayedAttackers.forEach((atk, index) => {
+    celestialPlanets.forEach((atk, index) => {
       const severity = Math.min(100, Math.max(0, atk.risk_score || 20));
-      const orbitRadius = 4.0 + ((100.0 - severity) / 100.0) * 13.0;
       const band = atk.risk_band || 'low';
       const bandColor = BAND_COLORS[band] || '#10b981';
       const evts = Math.max(1, atk.total_events || 1);
-      const planetRadius = Math.max(0.65, Math.min(1.4, 0.65 + Math.log10(evts) * 0.38));
+      const planetRadius = Math.max(0.65, Math.min(1.35, 0.65 + Math.log10(evts) * 0.35));
+
+      // Spacious orbital zoning with distinct lane separation:
+      // Zone 1: Critical (score >= 76)  -> Radii 8.2 to 12.0
+      // Zone 2: High (score >= 51)      -> Radii 13.5 to 17.5
+      // Zone 3: Medium (score >= 26)    -> Radii 19.0 to 23.2
+      // Zone 4: Low / Normal (< 26)     -> Radii 24.8 to 29.5
+      const subLane = ((index % 4) - 1.5) * 0.55;
+      let orbitRadius;
+      if (severity >= 76) {
+        orbitRadius = 8.2 + ((100.0 - severity) / 24.0) * 3.2 + subLane;
+      } else if (severity >= 51) {
+        orbitRadius = 13.5 + ((75.0 - severity) / 24.0) * 3.4 + subLane;
+      } else if (severity >= 26) {
+        orbitRadius = 19.0 + ((50.0 - severity) / 24.0) * 3.6 + subLane;
+      } else {
+        orbitRadius = 24.8 + ((25.0 - severity) / 25.0) * 3.8 + subLane;
+      }
+
+      // Prograde Keplerian speed (inner planets move gracefully faster, eliminating head-on collisions)
+      const speed = 0.0034 * Math.sqrt(8.2 / Math.max(5.0, orbitRadius)) * (0.92 + (index % 3) * 0.05);
+
+      // Golden ratio angular distribution ensures maximum angular spacing
+      const initialAngle = (index * goldenAngle) % (Math.PI * 2);
 
       let obj = planetsMap.get(atk.id);
 
@@ -522,8 +573,6 @@ export default function ThreatUniverse({ height = 650, isPreview = false, onExpa
         );
         mesh.add(atmoMesh);
 
-        const total = Math.max(1, displayedAttackers.length);
-        const initialAngle = (index / total) * Math.PI * 2 + Math.random() * 0.5;
         const orbitPts = [];
         for (let s = 0; s <= 128; s++) {
           const t = (s / 128) * Math.PI * 2;
@@ -531,7 +580,11 @@ export default function ThreatUniverse({ height = 650, isPreview = false, onExpa
         }
         const orbitLine = new THREE.Line(
           new THREE.BufferGeometry().setFromPoints(orbitPts),
-          new THREE.LineBasicMaterial({ color: bandColor, transparent: true, opacity: band === 'critical' ? 0.5 : 0.22 })
+          new THREE.LineBasicMaterial({
+            color: bandColor,
+            transparent: true,
+            opacity: band === 'critical' ? 0.5 : band === 'high' ? 0.35 : 0.2,
+          })
         );
 
         scene.add(mesh);
@@ -543,8 +596,8 @@ export default function ThreatUniverse({ height = 650, isPreview = false, onExpa
           orbitLine,
           orbitRadius,
           angle: initialAngle,
-          speed: (0.002 + (index % 5) * 0.0008) * (index % 2 === 0 ? 1 : -1),
-          rotSpeed: 0.008 + Math.random() * 0.015,
+          speed,
+          rotSpeed: 0.008 + (index % 3) * 0.005,
           size: planetRadius,
           data: atk,
         };
@@ -566,7 +619,7 @@ export default function ThreatUniverse({ height = 650, isPreview = false, onExpa
         }
       }
     });
-  }, [displayedAttackers]);
+  }, [celestialPlanets]);
 
   // Sync correlation edges
   useEffect(() => {
@@ -600,7 +653,7 @@ export default function ThreatUniverse({ height = 650, isPreview = false, onExpa
       scene.add(edgeLine);
       edgeLinesRef.current.push({ line: edgeLine, aObj, bObj, rel });
     });
-  }, [relationships, showRelationships, displayedAttackers]);
+  }, [relationships, showRelationships, celestialPlanets]);
 
   // Handle Raycasting click on planets
   const handleCanvasClick = useCallback((e) => {
@@ -729,17 +782,25 @@ export default function ThreatUniverse({ height = 650, isPreview = false, onExpa
           className="w-full h-full cursor-grab active:cursor-grabbing"
         />
 
-        {/* Floating 3D HUD Labels */}
+        {/* Floating 3D HUD Labels (Spacious, Non-overlapping) */}
         {showLabels && (
           <div className="absolute inset-0 pointer-events-none overflow-hidden">
             {planetScreens.map((lbl) => {
               const isCrit = lbl.riskBand === 'critical';
               const isHigh = lbl.riskBand === 'high';
+              const isDetailed = lbl.isSelected || lbl.isHovered || isCrit;
+
               return (
                 <div
                   key={lbl.id}
                   className={`absolute transition-all duration-75 pointer-events-auto cursor-pointer ${
-                    lbl.isSelected ? 'z-30 scale-110' : lbl.isHovered ? 'z-20 scale-105' : 'z-10'
+                    lbl.isSelected
+                      ? 'z-30 scale-110'
+                      : lbl.isHovered
+                      ? 'z-20 scale-105'
+                      : isCrit
+                      ? 'z-15'
+                      : 'z-10'
                   }`}
                   style={{ transform: `translate(${lbl.x}px,${lbl.y}px) translate(-50%,-100%)` }}
                   onClick={() => setSelectedAttackerId(lbl.id)}
@@ -747,48 +808,69 @@ export default function ThreatUniverse({ height = 650, isPreview = false, onExpa
                   onMouseLeave={() => setHoveredPlanetId(null)}
                 >
                   <div
-                    className={`px-2 py-1 rounded bg-black/85 backdrop-blur-md border font-mono text-[10px] shadow-lg flex flex-col space-y-0.5 transition-all ${
+                    className={`px-2 py-1 rounded bg-black/90 backdrop-blur-md border font-mono shadow-lg flex flex-col space-y-0.5 transition-all ${
                       lbl.isSelected
-                        ? 'border-cyan-400 text-white shadow-[0_0_18px_rgba(0,240,255,0.6)] ring-1 ring-cyan-400'
+                        ? 'border-cyan-400 text-white shadow-[0_0_16px_rgba(0,240,255,0.6)] ring-1 ring-cyan-400 text-[10px]'
                         : isCrit
-                        ? 'border-red-500/70 text-red-200'
+                        ? 'border-red-500/80 text-red-200 text-[10px]'
                         : isHigh
-                        ? 'border-orange-500/70 text-orange-200'
-                        : 'border-cyan-500/35 text-cyan-200'
+                        ? 'border-orange-500/60 text-orange-200 text-[9px]'
+                        : 'border-slate-800 text-slate-300 text-[9px]'
                     }`}
                   >
                     <div className="flex items-center space-x-1.5 font-bold">
                       <span
-                        className={`h-1.5 w-1.5 rounded-full animate-pulse ${
-                          isCrit ? 'bg-red-400' : isHigh ? 'bg-orange-400' : 'bg-emerald-400'
+                        className={`h-1.5 w-1.5 rounded-full ${
+                          isCrit
+                            ? 'bg-red-400 animate-pulse'
+                            : isHigh
+                            ? 'bg-orange-400'
+                            : 'bg-emerald-400'
                         }`}
                       />
                       <span>{lbl.ip}</span>
+                      {!isDetailed && (
+                        <span className="text-slate-400 text-[8px] font-normal">
+                          ({lbl.riskScore.toFixed(0)})
+                        </span>
+                      )}
                     </div>
-                    <div className="flex items-center justify-between text-[9px] text-soc-muted">
-                      <span className="uppercase">{lbl.riskBand}</span>
-                      <span
-                        className={
-                          isCrit ? 'text-red-400 font-bold' : isHigh ? 'text-orange-400 font-bold' : 'text-emerald-400'
-                        }
-                      >
-                        {lbl.riskScore.toFixed(0)}
-                      </span>
-                    </div>
-                    {lbl.targetedFunctions && lbl.targetedFunctions.length > 0 && (
-                      <div className="flex flex-wrap gap-0.5 pt-0.5 border-t border-soc-border/40">
-                        {lbl.targetedFunctions.map((fn, idx) => (
-                          <span key={idx} className="px-1 py-0.2 rounded text-[8px] bg-cyan-950/80 border border-cyan-500/50 text-cyan-300">
-                            {fn.replace(/_/g, ' ')}
+
+                    {isDetailed && (
+                      <>
+                        <div className="flex items-center justify-between text-[9px] text-slate-400">
+                          <span className="uppercase">{lbl.riskBand}</span>
+                          <span
+                            className={
+                              isCrit
+                                ? 'text-red-400 font-bold'
+                                : isHigh
+                                ? 'text-orange-400 font-bold'
+                                : 'text-emerald-400'
+                            }
+                          >
+                            {lbl.riskScore.toFixed(0)}
                           </span>
-                        ))}
-                      </div>
-                    )}
-                    {lbl.hasIncident && (
-                      <div className="text-[8px] text-red-400 font-bold tracking-tight flex items-center space-x-1">
-                        <span className="h-1 w-1 rounded-full bg-red-500 animate-ping" />
-                        <span>INCIDENT LINKED</span>
-                      </div>
+                        </div>
+                        {lbl.targetedFunctions && lbl.targetedFunctions.length > 0 && (
+                          <div className="flex flex-wrap gap-0.5 pt-0.5 border-t border-slate-800">
+                            {lbl.targetedFunctions.slice(0, 1).map((fn, idx) => (
+                              <span
+                                key={idx}
+                                className="px-1 py-0.2 rounded text-[8px] bg-cyan-950/80 border border-cyan-500/40 text-cyan-300"
+                              >
+                                {fn.replace(/_/g, ' ')}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        {lbl.hasIncident && (
+                          <div className="text-[8px] text-red-400 font-bold tracking-tight flex items-center space-x-1">
+                            <span className="h-1 w-1 rounded-full bg-red-500 animate-ping" />
+                            <span>INCIDENT LINKED</span>
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
