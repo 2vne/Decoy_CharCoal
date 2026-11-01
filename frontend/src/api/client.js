@@ -398,6 +398,15 @@ export const api = {
     return handleResponse(res);
   },
 
+  async resetDemoSession(sessionId) {
+    const res = await fetch(`${BASE_URL}/api/gateway/reset_session`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ session_id: sessionId }),
+    });
+    return handleResponse(res);
+  },
+
   async getGatewayFailures(params = {}) {
     const query = new URLSearchParams();
     if (params.status) query.append('status', params.status);

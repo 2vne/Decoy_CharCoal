@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ShieldAlert,
   Server,
@@ -6,6 +6,7 @@ import {
   ArrowRight,
   TrendingUp,
   Play,
+  Pause,
   RotateCcw,
   CheckCircle,
   Copy,
@@ -24,12 +25,19 @@ import {
   Sliders,
   ShieldCheck,
   History,
+  FastForward,
+  Flame,
+  Radio,
+  FileCode,
+  Key,
+  ShieldX,
+  Target,
 } from 'lucide-react';
 import { useSoc } from '../context/SocContext';
 import { api } from '../api/client';
 
 export default function GatewayPage() {
-  const { addToast } = useSoc();
+  const { addToast, latestRiskScoreUpdate, latestSessionTransition } = useSoc();
   const [stats, setStats] = useState(null);
   const [sessions, setSessions] = useState([]);
   const [pointAllocations, setPointAllocations] = useState({});
@@ -46,12 +54,333 @@ export default function GatewayPage() {
   const [classificationFilter, setClassificationFilter] = useState('ALL');
   const [routeFilter, setRouteFilter] = useState('ALL');
 
-  // Simulator state
+  // Single manual simulator state
   const [simIp, setSimIp] = useState('203.0.113.88');
   const [simPath, setSimPath] = useState('/auth/login');
   const [simMethod, setSimMethod] = useState('POST');
   const [simResult, setSimResult] = useState(null);
   const [simulating, setSimulating] = useState(false);
+
+  // ==========================================
+  // HACKATHON LIVE ATTACK DEMONSTRATION ENGINE
+  // ==========================================
+  const [selectedScenarioKey, setSelectedScenarioKey] = useState('multivector_apt');
+  const [demoSpeed, setDemoSpeed] = useState('fast'); // 'fast' (~30s), 'standard' (~55s), 'step'
+  const [demoRunning, setDemoRunning] = useState(false);
+  const [demoPaused, setDemoPaused] = useState(false);
+  const [demoCurrentStepIndex, setDemoCurrentStepIndex] = useState(0);
+  const [demoEventsLog, setDemoEventsLog] = useState([]);
+  const [demoSessionState, setDemoSessionState] = useState(null);
+  const [demoTransitionAlert, setDemoTransitionAlert] = useState(null);
+
+  const demoTimerRef = useRef(null);
+
+  // Scenario Definitions
+  const SCENARIOS = useMemo(
+    () => ({
+      normal_visitor: {
+        id: 'normal_visitor',
+        title: '1. Normal Visitor (Legitimate Browsing)',
+        sessionId: 'demo_sess_normal_alice',
+        ip: '198.51.100.12',
+        account: 'alice@legitimate-corp.com',
+        description: 'Benign browsing pattern: product catalog exploration, successful authentication, and profile access. Stays score 0.',
+        steps: [
+          {
+            label: 'Home page landing and asset loading',
+            category: 'abnormal_rate',
+            endpoint: '/',
+            method: 'GET',
+            eventType: 'page_view',
+            evidence: 'Standard browser request with normal HTTP headers and CSS assets',
+          },
+          {
+            label: 'Browse product catalog',
+            category: 'endpoint_enumeration',
+            endpoint: '/api/products/catalog',
+            method: 'GET',
+            eventType: 'api_read',
+            evidence: 'Standard catalog pagination request',
+          },
+          {
+            label: 'Submit legitimate user credentials',
+            category: 'login_failures',
+            endpoint: '/api/auth/login',
+            method: 'POST',
+            eventType: 'auth_success',
+            evidence: 'User alice@legitimate-corp.com authenticated successfully',
+          },
+          {
+            label: 'Load customer overview dashboard',
+            category: 'customer_db_access',
+            endpoint: '/api/user/dashboard',
+            method: 'GET',
+            eventType: 'normal_access',
+            evidence: 'Viewing authorized profile dashboard',
+          },
+        ],
+      },
+
+      brute_force: {
+        id: 'brute_force',
+        title: '2. Brute-Force Login Attack (Single Vector)',
+        sessionId: 'demo_sess_bruteforce_bob',
+        ip: '198.51.100.45',
+        account: 'target_admin@sentinel.io',
+        description: 'Repeated failed logins testing point allocation (max 12 pts) and demonstrating that the 2-category safeguard prevents false decoy routing.',
+        steps: [
+          {
+            label: 'Failed login attempt 1 (admin / admin123)',
+            category: 'login_failures',
+            endpoint: '/api/auth/login',
+            method: 'POST',
+            eventType: 'auth_failure',
+            evidence: 'Invalid password credential match attempt 1',
+          },
+          {
+            label: 'Failed login attempt 2 (admin / password)',
+            category: 'login_failures',
+            endpoint: '/api/auth/login',
+            method: 'POST',
+            eventType: 'auth_failure',
+            evidence: 'Invalid password credential match attempt 2',
+          },
+          {
+            label: 'Failed login attempt 3 (root / toor)',
+            category: 'login_failures',
+            endpoint: '/api/auth/login',
+            method: 'POST',
+            eventType: 'auth_failure',
+            evidence: 'Dictionary attack signature detected (attempt 3)',
+          },
+          {
+            label: 'Failed login attempt 4 (sysadmin / 123456)',
+            category: 'login_failures',
+            endpoint: '/api/auth/login',
+            method: 'POST',
+            eventType: 'auth_failure',
+            evidence: 'Dictionary attack signature detected (attempt 4)',
+          },
+          {
+            label: 'Failed login attempt 5 (administrator / welcome)',
+            category: 'login_failures',
+            endpoint: '/api/auth/login',
+            method: 'POST',
+            eventType: 'auth_failure',
+            evidence: 'Consecutive brute-force threshold hit (severity 75%)',
+          },
+          {
+            label: 'Failed login attempt 10 (credential spraying burst)',
+            category: 'login_failures',
+            endpoint: '/api/auth/login',
+            method: 'POST',
+            eventType: 'auth_failure',
+            evidence: 'Max category threshold: 10 failed logins (severity 100% = 12.0 pts)',
+          },
+        ],
+      },
+
+      otp_guessing: {
+        id: 'otp_guessing',
+        title: '3. OTP / MFA Guessing Attack',
+        sessionId: 'demo_sess_otp_guess',
+        ip: '198.51.100.78',
+        account: 'vip_user@enterprise.org',
+        description: 'Repeated multi-factor authentication guessing on verification endpoints testing OTP point allocation (max 8 pts).',
+        steps: [
+          {
+            label: 'Submit invalid 6-digit OTP code (111111)',
+            category: 'otp_failures',
+            endpoint: '/api/auth/verify-otp',
+            method: 'POST',
+            eventType: 'auth_failure',
+            evidence: 'Incorrect MFA token submitted (attempt 1)',
+          },
+          {
+            label: 'Submit invalid 6-digit OTP code (000000)',
+            category: 'otp_failures',
+            endpoint: '/api/auth/verify-otp',
+            method: 'POST',
+            eventType: 'auth_failure',
+            evidence: 'Incorrect MFA token submitted (attempt 2)',
+          },
+          {
+            label: 'Submit invalid 6-digit OTP code (123456)',
+            category: 'otp_failures',
+            endpoint: '/api/auth/verify-otp',
+            method: 'POST',
+            eventType: 'auth_failure',
+            evidence: 'Sequential token guessing detected (severity 60%)',
+          },
+          {
+            label: 'Automated MFA token spray (999999)',
+            category: 'otp_failures',
+            endpoint: '/api/auth/verify-otp',
+            method: 'POST',
+            eventType: 'auth_failure',
+            evidence: 'Max category threshold: 5 failed OTP attempts (severity 100% = 8.0 pts)',
+          },
+        ],
+      },
+
+      recon_probing: {
+        id: 'recon_probing',
+        title: '4. Reconnaissance & Configuration Probing',
+        sessionId: 'demo_sess_recon_probe',
+        ip: '198.51.100.110',
+        account: 'recon_crawler@attacker.net',
+        description: 'Sensitive path scanning, .env inspection, and admin probing showing score progression to SUSPICIOUS.',
+        steps: [
+          {
+            label: 'Probe for exposed Swagger OpenAPI documentation',
+            category: 'endpoint_enumeration',
+            endpoint: '/api/swagger.json',
+            method: 'GET',
+            eventType: 'probe',
+            evidence: 'Unauthenticated API specification crawler hit',
+          },
+          {
+            label: 'Probe Spring/Actuator health and environment paths',
+            category: 'endpoint_enumeration',
+            endpoint: '/actuator/env',
+            method: 'GET',
+            eventType: 'probe',
+            evidence: 'Actuator environment variable probe',
+          },
+          {
+            label: 'Probe WordPress admin login URL',
+            category: 'admin_access_attempts',
+            endpoint: '/wp-admin/login.php',
+            method: 'GET',
+            eventType: 'probe',
+            evidence: 'Common CMS admin path scanner signature',
+          },
+          {
+            label: 'Probe internal administration portal console',
+            category: 'admin_access_attempts',
+            endpoint: '/admin/system/console',
+            method: 'GET',
+            eventType: 'probe',
+            evidence: 'Unauthorized privileged console access attempt',
+          },
+          {
+            label: 'Probe production environment variables (.env)',
+            category: 'secrets_code_probing',
+            endpoint: '/.env',
+            method: 'GET',
+            eventType: 'secrets_probe',
+            evidence: 'Critical file probe: seeking database and JWT secret keys',
+          },
+          {
+            label: 'Probe Git repository configuration (/.git/config)',
+            category: 'secrets_code_probing',
+            endpoint: '/.git/config',
+            method: 'GET',
+            eventType: 'secrets_probe',
+            evidence: 'Attempting to extract Git repository source history',
+          },
+        ],
+      },
+
+      multivector_apt: {
+        id: 'multivector_apt',
+        title: '5. Combined Multi-Vector Attack (REAL → DECOY Diversion)',
+        sessionId: 'demo_sess_multivector_apt',
+        ip: '198.51.100.222',
+        account: 'target_hostile@sentinel.io',
+        description: 'Full coordinated attack progression: NORMAL → SUSPICIOUS → HIGH_RISK → LIKELY_MALICIOUS → Automatic DECOY diversion with independent category safeguards.',
+        steps: [
+          {
+            label: 'Initial reconnaissance on public landing page',
+            category: 'abnormal_rate',
+            endpoint: '/',
+            method: 'GET',
+            eventType: 'page_view',
+            evidence: 'Visitor initiates session on legitimate portal',
+          },
+          {
+            label: 'Password-reset account enumeration abuse',
+            category: 'password_reset_abuse',
+            endpoint: '/api/auth/reset-password',
+            method: 'POST',
+            eventType: 'probe',
+            evidence: 'High-frequency password reset spray targeting unknown emails',
+          },
+          {
+            label: 'Credential stuffing & login brute-force attempt',
+            category: 'login_failures',
+            endpoint: '/api/auth/login',
+            method: 'POST',
+            eventType: 'auth_failure',
+            evidence: 'Sequential password attempts with known compromised credentials',
+          },
+          {
+            label: 'MFA token bypass & OTP guessing',
+            category: 'otp_failures',
+            endpoint: '/api/auth/verify-otp',
+            method: 'POST',
+            eventType: 'auth_failure',
+            evidence: 'Automated OTP code spray attempting 2FA bypass',
+          },
+          {
+            label: 'Sensitive API & system metrics enumeration',
+            category: 'endpoint_enumeration',
+            endpoint: '/actuator/metrics',
+            method: 'GET',
+            eventType: 'probe',
+            evidence: 'Systematic crawling of unpublished administrative endpoints',
+          },
+          {
+            label: 'Unauthorized admin privilege escalation probe',
+            category: 'admin_access_attempts',
+            endpoint: '/admin/system/console',
+            method: 'GET',
+            eventType: 'probe',
+            evidence: 'Direct attempt to access internal administrator dashboard',
+          },
+          {
+            label: 'Automated rapid vulnerability scanning burst',
+            category: 'abnormal_rate',
+            endpoint: '/api/scan/batch',
+            method: 'POST',
+            eventType: 'rate_spike',
+            evidence: 'High-speed automated tool activity (>65 req/min burst)',
+          },
+          {
+            label: 'Secrets and cloud credentials probing (.env, .aws)',
+            category: 'secrets_code_probing',
+            endpoint: '/.env',
+            method: 'GET',
+            eventType: 'secrets_probe',
+            evidence: 'Probed for production secrets and AWS credential profiles',
+          },
+          {
+            label: 'Unauthorized customer & database extract attempt',
+            category: 'customer_db_access',
+            endpoint: '/api/customers/export',
+            method: 'POST',
+            eventType: 'data_access',
+            evidence: 'Direct IDOR extraction attempt: querying complete customer table',
+          },
+        ],
+      },
+    }),
+    []
+  );
+
+  const currentScenario = SCENARIOS[selectedScenarioKey] || SCENARIOS.multivector_apt;
+
+  const defaultAllocations = {
+    login_failures: { max: 12, label: 'Repeated login failures' },
+    otp_failures: { max: 8, label: 'Repeated OTP failures' },
+    password_reset_abuse: { max: 5, label: 'Password-reset abuse' },
+    admin_access_attempts: { max: 15, label: 'Unauthorized admin access attempts' },
+    secrets_code_probing: { max: 20, label: 'Source code, .env, secrets probing' },
+    endpoint_enumeration: { max: 15, label: 'Sensitive endpoint enumeration' },
+    abnormal_rate: { max: 10, label: 'Abnormal request frequency' },
+    customer_db_access: { max: 10, label: 'Unauthorized customer/database access' },
+    combined_patterns: { max: 5, label: 'Combined suspicious patterns (synergy)' },
+  };
 
   const fetchGatewayData = async () => {
     try {
@@ -77,9 +406,74 @@ export default function GatewayPage() {
 
   useEffect(() => {
     fetchGatewayData();
-    const interval = setInterval(fetchGatewayData, 10000);
+    const interval = setInterval(fetchGatewayData, 8000);
     return () => clearInterval(interval);
   }, []);
+
+  // Real-time WebSocket updates: updates session score and classification immediately!
+  useEffect(() => {
+    if (!latestRiskScoreUpdate) return;
+    const upd = latestRiskScoreUpdate;
+
+    setSessions((prev) => {
+      const idx = prev.findIndex((s) => s.session_id === upd.session_id);
+      const updatedSess = {
+        session_id: upd.session_id,
+        src_ip: upd.src_ip,
+        account_email: upd.account_email,
+        risk_score: upd.current_risk_score,
+        previous_risk_score: upd.previous_risk_score,
+        risk_classification: upd.risk_classification,
+        current_route: upd.current_route,
+        is_diverted: upd.is_diverted,
+        category_scores: upd.category_breakdown,
+        reason_codes: upd.reason_codes,
+        last_seen: upd.timestamp,
+        independent_categories_count: Object.keys(upd.category_breakdown || {}).filter(
+          (k) =>
+            k !== 'combined_patterns' &&
+            (upd.category_breakdown[k].contribution > 0 || upd.category_breakdown[k].effective_count >= 0.5)
+        ).length,
+      };
+
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = { ...copy[idx], ...updatedSess };
+        return copy;
+      }
+      return [updatedSess, ...prev];
+    });
+
+    if (selectedSession && selectedSession.session_id === upd.session_id) {
+      setSelectedSession((prev) => ({
+        ...prev,
+        risk_score: upd.current_risk_score,
+        previous_risk_score: upd.previous_risk_score,
+        risk_classification: upd.risk_classification,
+        current_route: upd.current_route,
+        is_diverted: upd.is_diverted,
+        category_scores: upd.category_breakdown,
+        reason_codes: upd.reason_codes,
+      }));
+    }
+
+    if (demoSessionState && demoSessionState.session_id === upd.session_id) {
+      setDemoSessionState((prev) => ({
+        ...prev,
+        risk_score: upd.current_risk_score,
+        risk_classification: upd.risk_classification,
+        current_route: upd.current_route,
+        is_diverted: upd.is_diverted,
+        category_scores: upd.category_breakdown,
+      }));
+    }
+  }, [latestRiskScoreUpdate]);
+
+  // WebSocket Transition Handler
+  useEffect(() => {
+    if (!latestSessionTransition) return;
+    setDemoTransitionAlert(latestSessionTransition);
+  }, [latestSessionTransition]);
 
   const handleInspectSession = async (sess) => {
     setSelectedSession(sess);
@@ -87,7 +481,7 @@ export default function GatewayPage() {
       setLoadingDetail(true);
       const detail = await api.getGatewaySession(sess.session_id);
       setSessionDetail(detail);
-    } catch (err) {
+    } catch {
       setSessionDetail(sess);
     } finally {
       setLoadingDetail(false);
@@ -131,6 +525,133 @@ export default function GatewayPage() {
     addToast('NGINX configuration copied to clipboard', 'info');
   };
 
+  // ==========================================
+  // HACKATHON LIVE DEMONSTRATION LOGIC
+  // ==========================================
+  const executeDemoStep = async (stepIndex) => {
+    const steps = currentScenario.steps;
+    if (stepIndex >= steps.length) {
+      setDemoRunning(false);
+      addToast(`Scenario "${currentScenario.title}" completed!`, 'success');
+      return;
+    }
+
+    const step = steps[stepIndex];
+    try {
+      // Ingest synthetic event through actual behaviour scoring engine
+      const res = await api.ingestBehaviourEvent({
+        session_id: currentScenario.sessionId,
+        src_ip: currentScenario.ip,
+        account_email: currentScenario.account,
+        category: step.category,
+        endpoint: step.endpoint,
+        event_type: step.eventType,
+        evidence: step.evidence,
+        is_simulated: true,
+      });
+
+      const entry = {
+        stepNumber: stepIndex + 1,
+        totalSteps: steps.length,
+        timestamp: new Date().toLocaleTimeString(),
+        label: step.label,
+        category: step.category,
+        endpoint: step.endpoint,
+        evidence: step.evidence,
+        severity: res.severity,
+        pointContribution: res.point_contribution,
+        cumulativeScore: res.current_risk_score,
+        classification: res.risk_classification,
+        currentRoute: res.current_route,
+        isDiverted: res.is_diverted,
+        routingTransition: res.routing_transition,
+        isSimulated: true,
+      };
+
+      setDemoEventsLog((prev) => [entry, ...prev]);
+      setDemoSessionState({
+        session_id: currentScenario.sessionId,
+        src_ip: currentScenario.ip,
+        account_email: currentScenario.account,
+        risk_score: res.current_risk_score,
+        risk_classification: res.risk_classification,
+        current_route: res.current_route,
+        is_diverted: res.is_diverted,
+      });
+
+      if (res.routing_transition) {
+        setDemoTransitionAlert(res.routing_transition);
+      }
+
+      setDemoCurrentStepIndex(stepIndex + 1);
+    } catch (err) {
+      console.error('Demo step failed', err);
+      addToast(`Step ${stepIndex + 1} error: ${err.message}`, 'error');
+      setDemoRunning(false);
+    }
+  };
+
+  // Step runner effect
+  useEffect(() => {
+    if (!demoRunning || demoPaused) return;
+
+    if (demoSpeed === 'step') {
+      // In step mode, user advances manually
+      return;
+    }
+
+    const intervalMs = demoSpeed === 'fast' ? 3200 : 5500;
+    demoTimerRef.current = setTimeout(() => {
+      executeDemoStep(demoCurrentStepIndex);
+    }, intervalMs);
+
+    return () => {
+      if (demoTimerRef.current) clearTimeout(demoTimerRef.current);
+    };
+  }, [demoRunning, demoPaused, demoCurrentStepIndex, demoSpeed, currentScenario]);
+
+  const handleStartDemo = () => {
+    if (demoCurrentStepIndex >= currentScenario.steps.length) {
+      // Restart from beginning
+      setDemoCurrentStepIndex(0);
+      setDemoEventsLog([]);
+      setDemoTransitionAlert(null);
+    }
+    setDemoRunning(true);
+    setDemoPaused(false);
+    if (demoCurrentStepIndex === 0) {
+      executeDemoStep(0);
+    }
+  };
+
+  const handlePauseDemo = () => {
+    setDemoPaused(!demoPaused);
+  };
+
+  const handleManualStep = () => {
+    if (demoCurrentStepIndex < currentScenario.steps.length) {
+      executeDemoStep(demoCurrentStepIndex);
+    }
+  };
+
+  const handleResetDemoSession = async () => {
+    if (demoTimerRef.current) clearTimeout(demoTimerRef.current);
+    setDemoRunning(false);
+    setDemoPaused(false);
+    setDemoCurrentStepIndex(0);
+    setDemoEventsLog([]);
+    setDemoTransitionAlert(null);
+    setDemoSessionState(null);
+
+    try {
+      await api.resetDemoSession(currentScenario.sessionId);
+      addToast(`Isolated demo session ${currentScenario.sessionId} reset to 0. Real visitor telemetry preserved.`, 'success');
+      fetchGatewayData();
+    } catch (err) {
+      addToast(`Demo reset error: ${err.message}`, 'error');
+    }
+  };
+
   // Filtered Sessions
   const filteredSessions = useMemo(() => {
     return sessions.filter((s) => {
@@ -151,18 +672,6 @@ export default function GatewayPage() {
       return matchesSearch && matchesClass && matchesRoute;
     });
   }, [sessions, searchQuery, classificationFilter, routeFilter]);
-
-  const defaultAllocations = {
-    login_failures: { max: 12, label: 'Repeated login failures' },
-    otp_failures: { max: 8, label: 'Repeated OTP failures' },
-    password_reset_abuse: { max: 5, label: 'Password-reset abuse' },
-    admin_access_attempts: { max: 15, label: 'Unauthorized admin access attempts' },
-    secrets_code_probing: { max: 20, label: 'Source code, .env, secrets probing' },
-    endpoint_enumeration: { max: 15, label: 'Sensitive endpoint enumeration' },
-    abnormal_rate: { max: 10, label: 'Abnormal request frequency' },
-    customer_db_access: { max: 10, label: 'Unauthorized customer/database access' },
-    combined_patterns: { max: 5, label: 'Combined suspicious patterns (synergy)' },
-  };
 
   const getClassificationBadge = (cls) => {
     switch (cls?.toUpperCase()) {
@@ -206,12 +715,11 @@ export default function GatewayPage() {
               <h1 className="text-xl font-bold font-mono text-white tracking-wider flex items-center gap-2">
                 DECEPTION GATEWAY & 0–100 RISK SCORING ENGINE
                 <span className="text-xs px-2 py-0.5 rounded bg-emerald-950 border border-emerald-500/40 text-emerald-300">
-                  BEHAVIOURAL ROUTING
+                  REAL-TIME BEHAVIOURAL ROUTING
                 </span>
               </h1>
               <p className="text-xs font-mono text-slate-400 mt-1">
-                Continuous 0–100 behaviour-based risk engine with 9 category point allocations, time decay,
-                and independent-category safeguards for automatic Decoy diversion.
+                Continuous 0–100 threat calculation evaluated immediately per event. Dynamic reverse-proxy diversion to isolated Decoy with independent-category safeguards.
               </p>
             </div>
           </div>
@@ -348,6 +856,331 @@ export default function GatewayPage() {
           </div>
           <div className="text-2xl font-bold font-mono text-amber-400">{sessions.length}</div>
           <div className="text-[11px] font-mono text-slate-500 mt-1">Tracked visitor sessions</div>
+        </div>
+      </div>
+
+      {/* ============================================================ */}
+      {/* HACKATHON DEMONSTRATION PANEL: LIVE ATTACK SCENARIO SIMULATOR */}
+      {/* ============================================================ */}
+      <div className="bg-gradient-to-r from-slate-900 via-slate-900 to-blue-950/40 border-2 border-blue-500/50 rounded-lg p-5 font-mono space-y-4 shadow-xl">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+          <div>
+            <div className="flex items-center space-x-2">
+              <Flame className="w-5 h-5 text-amber-400 animate-bounce" />
+              <h2 className="text-base font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                HACKATHON LIVE DEMONSTRATION: CONTROLLED ATTACK SCENARIOS
+                <span className="text-[10px] px-2 py-0.5 rounded bg-amber-950 border border-amber-500/50 text-amber-300 font-bold">
+                  SIMULATED TELEMETRY
+                </span>
+              </h2>
+            </div>
+            <p className="text-xs text-slate-400 mt-1">
+              Demonstrate the real-time progression: <strong className="text-emerald-400">NORMAL</strong> → <strong className="text-amber-400">SUSPICIOUS</strong> → <strong className="text-orange-400">HIGH_RISK</strong> → <strong className="text-red-400">LIKELY_MALICIOUS</strong> → <strong className="text-red-300">REAL TO DECOY</strong> in 30–60 seconds.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Speed Selector */}
+            <div className="flex items-center bg-slate-950 border border-slate-800 rounded p-1 text-xs">
+              <span className="text-[11px] text-slate-400 px-2 flex items-center gap-1">
+                <FastForward className="w-3 h-3 text-blue-400" />
+                Mode:
+              </span>
+              <button
+                onClick={() => setDemoSpeed('fast')}
+                className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                  demoSpeed === 'fast' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+                }`}
+                title="Accelerated demonstration (~30s total)"
+              >
+                Fast (30s)
+              </button>
+              <button
+                onClick={() => setDemoSpeed('standard')}
+                className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                  demoSpeed === 'standard' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+                }`}
+                title="Standard demonstration (~55s total)"
+              >
+                Normal (55s)
+              </button>
+              <button
+                onClick={() => setDemoSpeed('step')}
+                className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                  demoSpeed === 'step' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+                }`}
+                title="Manual Step-by-Step advancement"
+              >
+                Manual Step
+              </button>
+            </div>
+
+            {/* Reset Button */}
+            <button
+              onClick={handleResetDemoSession}
+              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white rounded text-xs font-bold flex items-center gap-1.5 transition-all"
+              title="Resets only the isolated demonstration session. Real visitor telemetry is preserved."
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Reset Demo Session</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Scenario Selection Tabs */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+          {Object.values(SCENARIOS).map((sc) => {
+            const isSelected = selectedScenarioKey === sc.id;
+            return (
+              <button
+                key={sc.id}
+                onClick={() => {
+                  if (demoRunning) handleResetDemoSession();
+                  setSelectedScenarioKey(sc.id);
+                  setDemoCurrentStepIndex(0);
+                  setDemoEventsLog([]);
+                  setDemoTransitionAlert(null);
+                  setDemoSessionState(null);
+                }}
+                className={`p-2.5 rounded text-left border transition-all text-xs flex flex-col justify-between ${
+                  isSelected
+                    ? 'bg-blue-950/80 border-blue-500 text-white shadow-md'
+                    : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                }`}
+              >
+                <div className="font-bold flex items-center gap-1.5">
+                  <Target className={`w-3.5 h-3.5 ${isSelected ? 'text-blue-400' : 'text-slate-500'}`} />
+                  <span className="truncate">{sc.title}</span>
+                </div>
+                <div className="text-[10px] text-slate-500 mt-1 line-clamp-2">{sc.description}</div>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Scenario Control & Progression Bar */}
+        <div className="bg-slate-950 border border-slate-800 rounded-lg p-4 space-y-3">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="space-y-1">
+              <div className="text-xs font-bold text-white flex items-center gap-2">
+                <span>Active Target:</span>
+                <span className="text-blue-400 font-mono">{currentScenario.sessionId}</span>
+                <span className="text-slate-500">({currentScenario.ip})</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded bg-cyan-950 border border-cyan-500/40 text-cyan-300">
+                  ISOLATED DEMO
+                </span>
+              </div>
+              <div className="text-[11px] text-slate-400">
+                Step <strong className="text-white">{demoCurrentStepIndex}</strong> of <strong className="text-white">{currentScenario.steps.length}</strong>
+                {demoCurrentStepIndex >= currentScenario.steps.length && (
+                  <span className="text-emerald-400 font-bold ml-2">✓ Demonstration Complete</span>
+                )}
+              </div>
+            </div>
+
+            {/* Run / Pause / Next Buttons */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleStartDemo}
+                disabled={demoRunning && !demoPaused}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-xs flex items-center gap-1.5 transition-all disabled:opacity-50"
+              >
+                <Play className="w-4 h-4 fill-current" />
+                <span>{demoCurrentStepIndex >= currentScenario.steps.length ? 'Re-run Scenario' : demoPaused ? 'Resume Scenario' : 'Run Scenario'}</span>
+              </button>
+
+              {demoRunning && demoSpeed !== 'step' && (
+                <button
+                  onClick={handlePauseDemo}
+                  className="px-3 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded text-xs flex items-center gap-1.5 transition-all"
+                >
+                  <Pause className="w-4 h-4" />
+                  <span>{demoPaused ? 'Resume' : 'Pause'}</span>
+                </button>
+              )}
+
+              {demoSpeed === 'step' && (
+                <button
+                  onClick={handleManualStep}
+                  disabled={demoCurrentStepIndex >= currentScenario.steps.length}
+                  className="px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded text-xs flex items-center gap-1.5 transition-all disabled:opacity-50"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                  <span>Next Step ({demoCurrentStepIndex + 1}/{currentScenario.steps.length})</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Real-time Threat Progression Visualizer */}
+          <div className="pt-2 border-t border-slate-800">
+            <div className="text-[11px] text-slate-400 mb-1 flex justify-between">
+              <span>LIVE THREAT PROGRESSION & ROUTE CLASSIFICATION:</span>
+              <span className="font-bold text-white">
+                Score: {demoSessionState?.risk_score !== undefined ? Number(demoSessionState.risk_score).toFixed(2) : '0.00'} / 100.0
+              </span>
+            </div>
+
+            <div className="grid grid-cols-5 gap-1.5 text-center text-[10px] font-bold">
+              {/* NORMAL 0-29 */}
+              <div
+                className={`p-2 rounded border transition-all ${
+                  (demoSessionState?.risk_score || 0) < 30
+                    ? 'bg-emerald-950 border-emerald-500 text-emerald-300 ring-2 ring-emerald-500/50'
+                    : 'bg-slate-900 border-slate-800 text-slate-500'
+                }`}
+              >
+                <div>0–29: NORMAL</div>
+                <div className="text-[9px] font-normal text-slate-400">Route: REAL</div>
+              </div>
+
+              {/* SUSPICIOUS 30-49 */}
+              <div
+                className={`p-2 rounded border transition-all ${
+                  (demoSessionState?.risk_score || 0) >= 30 && (demoSessionState?.risk_score || 0) < 50
+                    ? 'bg-amber-950 border-amber-500 text-amber-300 ring-2 ring-amber-500/50'
+                    : 'bg-slate-900 border-slate-800 text-slate-500'
+                }`}
+              >
+                <div>30–49: SUSPICIOUS</div>
+                <div className="text-[9px] font-normal text-slate-400">Route: REAL (Monitoring)</div>
+              </div>
+
+              {/* HIGH_RISK 50-69 */}
+              <div
+                className={`p-2 rounded border transition-all ${
+                  (demoSessionState?.risk_score || 0) >= 50 && (demoSessionState?.risk_score || 0) < 70
+                    ? 'bg-orange-950 border-orange-500 text-orange-300 ring-2 ring-orange-500/50'
+                    : 'bg-slate-900 border-slate-800 text-slate-500'
+                }`}
+              >
+                <div>50–69: HIGH_RISK</div>
+                <div className="text-[9px] font-normal text-slate-400">Route: REAL (Scrutiny)</div>
+              </div>
+
+              {/* LIKELY_MALICIOUS 70-100 */}
+              <div
+                className={`p-2 rounded border transition-all ${
+                  (demoSessionState?.risk_score || 0) >= 70 && !demoSessionState?.is_diverted
+                    ? 'bg-red-950 border-red-500 text-red-300 ring-2 ring-red-500/50'
+                    : 'bg-slate-900 border-slate-800 text-slate-500'
+                }`}
+              >
+                <div>70+: LIKELY_MALICIOUS</div>
+                <div className="text-[9px] font-normal text-slate-400">Requires ≥2 Categories</div>
+              </div>
+
+              {/* DECOY DIVERTED */}
+              <div
+                className={`p-2 rounded border transition-all ${
+                  demoSessionState?.is_diverted
+                    ? 'bg-red-950 border-red-500 text-red-300 ring-2 ring-red-500/80 animate-pulse'
+                    : 'bg-slate-900 border-slate-800 text-slate-500'
+                }`}
+              >
+                <div className="flex items-center justify-center gap-1">
+                  <ShieldAlert className="w-3 h-3 text-red-400" />
+                  <span>DECOY DIVERTED</span>
+                </div>
+                <div className="text-[9px] font-normal text-red-400">Trapped in Honeynet</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Decoy Transition Banner Alert */}
+          {demoTransitionAlert && (
+            <div className="p-3 bg-red-950/80 border-2 border-red-500 rounded-lg text-red-200 flex items-center justify-between animate-pulse">
+              <div className="flex items-center space-x-3">
+                <ShieldAlert className="w-6 h-6 text-red-400 shrink-0" />
+                <div>
+                  <div className="font-bold text-xs uppercase tracking-wider text-red-300 flex items-center gap-2">
+                    GATEWAY DIVERSION EXECUTED: REAL → DECOY HONEYPOT
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-900 border border-red-400 text-white">
+                      LIVE TRANSITION
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-red-300/90 mt-0.5">
+                    {demoTransitionAlert.reason || 'Threshold score exceeded with verified multi-category attack evidence.'}
+                  </div>
+                </div>
+              </div>
+              <div className="text-right text-[11px] shrink-0 font-bold text-red-300">
+                Score: {demoTransitionAlert.new_score || demoSessionState?.risk_score}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Demonstration Live Events Log */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-white font-bold flex items-center gap-1.5">
+              <Activity className="w-4 h-4 text-emerald-400" />
+              DEMONSTRATION STEP TELEMETRY STREAM
+            </span>
+            <span className="text-slate-400 text-[11px]">
+              {demoEventsLog.length} synthetic events evaluated by backend
+            </span>
+          </div>
+
+          <div className="max-h-64 overflow-y-auto space-y-1.5 border border-slate-800 rounded-lg p-2 bg-slate-950">
+            {demoEventsLog.length === 0 ? (
+              <div className="text-center py-6 text-slate-500 text-xs">
+                No events evaluated yet. Click <strong>&ldquo;Run Scenario&rdquo;</strong> to launch the live attack demonstration.
+              </div>
+            ) : (
+              demoEventsLog.map((ev, idx) => (
+                <div
+                  key={idx}
+                  className={`p-2.5 rounded border text-xs transition-all ${
+                    ev.routingTransition
+                      ? 'bg-red-950/40 border-red-500/60'
+                      : 'bg-slate-900/80 border-slate-800 hover:border-slate-700'
+                  }`}
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <div className="flex items-center space-x-2">
+                      <span className="px-1.5 py-0.5 rounded bg-blue-950 border border-blue-500/40 text-blue-300 font-bold text-[10px]">
+                        Step {ev.stepNumber}/{ev.totalSteps}
+                      </span>
+                      <span className="font-bold text-slate-200">{ev.label}</span>
+                      <span className="text-[10px] text-slate-500 font-mono">({ev.endpoint})</span>
+                    </div>
+
+                    <div className="flex items-center space-x-2 shrink-0">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-950/60 border border-amber-500/40 text-amber-300">
+                        {ev.category}
+                      </span>
+                      <span className="text-slate-400 text-[11px]">
+                        +{Number(ev.pointContribution || 0).toFixed(2)} pts
+                      </span>
+                      <span
+                        className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${getClassificationBadge(
+                          ev.classification
+                        )}`}
+                      >
+                        {ev.classification} ({Number(ev.cumulativeScore || 0).toFixed(1)})
+                      </span>
+                      {ev.isDiverted ? (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-950 text-red-400 border border-red-500/50">
+                          DECOY
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-500/50">
+                          REAL
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-1 text-[11px] text-slate-400 flex items-center justify-between">
+                    <span className="italic">&ldquo;{ev.evidence}&rdquo;</span>
+                    <span className="text-slate-500 text-[10px]">{ev.timestamp}</span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </div>
       </div>
 

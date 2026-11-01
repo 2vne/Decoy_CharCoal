@@ -565,9 +565,14 @@ async def record_behaviour_event(
     """
     now_utc = now or datetime.now(timezone.utc)
 
-    # 1. Temporal fingerprint for deduplication (2-second quantization)
-    time_bucket = int(now_utc.timestamp() // 2)
-    fingerprint_raw = f"{session_id}:{category}:{endpoint}:{event_type}:{time_bucket}"
+    # 1. Temporal fingerprint for deduplication
+    if is_simulated:
+        # Simulated events preserve unique evidence and precise timestamp for accelerated demos
+        fingerprint_raw = f"{session_id}:{category}:{endpoint}:{event_type}:{evidence}:{now_utc.timestamp()}"
+    else:
+        # Real events use 2-second quantization for debouncing rapid duplicate requests
+        time_bucket = int(now_utc.timestamp() // 2)
+        fingerprint_raw = f"{session_id}:{category}:{endpoint}:{event_type}:{time_bucket}"
     fingerprint = hashlib.sha256(fingerprint_raw.encode("utf-8")).hexdigest()
 
     # Check for duplicate event within debounce window

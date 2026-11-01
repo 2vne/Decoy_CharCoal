@@ -39,6 +39,8 @@ export function SocProvider({ children }) {
   const [metrics, setMetrics] = useState(null);
   const [functionEvents, setFunctionEvents] = useState([]);
   const [functionStats, setFunctionStats] = useState(null);
+  const [latestRiskScoreUpdate, setLatestRiskScoreUpdate] = useState(null);
+  const [latestSessionTransition, setLatestSessionTransition] = useState(null);
 
   // UI Toast notification state
   const [toasts, setToasts] = useState([]);
@@ -240,8 +242,10 @@ export function SocProvider({ children }) {
               setOverview((prev) => (prev ? { ...prev, active_blocks: Math.max(0, (prev.active_blocks || 1) - 1) } : prev));
               addToast(`Auto-Rollback Complete: ${payload.ip} unblocked`, 'info');
             } else if (type === 'session_transition') {
+              setLatestSessionTransition(payload);
               addToast(`TRANSITION: ${payload.transition} for ${payload.src_ip} (Score: ${payload.new_score})`, 'warning');
             } else if (type === 'risk_score_update') {
+              setLatestRiskScoreUpdate(payload);
               if (payload.routing_transition) {
                 addToast(`DIVERSION EVENT: ${payload.routing_transition.transition} (${payload.src_ip})`, 'error');
               }
@@ -483,6 +487,8 @@ export function SocProvider({ children }) {
         selectedHoneypot,
         setSelectedHoneypot,
         incomingPing,
+        latestRiskScoreUpdate,
+        latestSessionTransition,
         refreshAllData,
         blockAttacker: blockAttackerAction,
         unblockAttacker: unblockAttackerAction,

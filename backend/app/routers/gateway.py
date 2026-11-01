@@ -38,6 +38,10 @@ class ResetVisitorIn(BaseModel):
     src_ip: Optional[str] = None
 
 
+class ResetSessionIn(BaseModel):
+    session_id: str
+
+
 @router.post("/reset_visitor")
 async def reset_visitor(
     request: Request,
@@ -93,6 +97,51 @@ async def reset_visitor(
         "ip": target_ip,
         "new_risk_score": 0.0,
         "message": f"Visitor {target_ip} threat profile successfully reset to 0. Next request routes to Real Application.",
+    }
+
+
+@router.post("/reset_session")
+async def reset_session_endpoint(
+    payload: ResetSessionIn,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Resets an isolated demonstration session without deleting real visitor telemetry.
+    """
+    target_sid = payload.session_id.strip()
+    if not target_sid:
+        raise HTTPException(status_code=400, detail="session_id cannot be empty")
+
+    # Delete observed behaviour events ONLY for this session
+    del_stmt = delete(ObservedBehaviourEvent).where(ObservedBehaviourEvent.session_id == target_sid)
+    await db.execute(del_stmt)
+
+    # Reset VisitorSessionRisk record ONLY for this session
+    sess_stmt = select(VisitorSessionRisk).where(VisitorSessionRisk.session_id == target_sid)
+    sess_res = await db.execute(sess_stmt)
+    sess = sess_res.scalar_one_or_none()
+    if sess:
+        sess.risk_score = 0.0
+        sess.previous_risk_score = 0.0
+        sess.risk_classification = "NORMAL"
+        sess.category_scores = {}
+        sess.active_categories = []
+        sess.independent_categories_count = 0
+        sess.reason_codes = []
+        sess.current_route = "real"
+        sess.is_diverted = False
+        sess.diverted_at = None
+        sess.diversion_reason = None
+        sess.routing_transitions = []
+        sess.last_seen = datetime.now(timezone.utc)
+
+    await db.commit()
+
+    return {
+        "status": "reset_complete",
+        "session_id": target_sid,
+        "new_risk_score": 0.0,
+        "message": f"Demonstration session {target_sid} reset successfully. Real visitor telemetry preserved.",
     }
 
 
