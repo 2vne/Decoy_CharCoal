@@ -18,6 +18,7 @@ import {
   Layers,
   Zap,
 } from 'lucide-react';
+import { BASE_URL } from '../api/client';
 
 export default function PortalAdmin({ basePath }) {
   const [adminData, setAdminData] = useState(null);
@@ -32,7 +33,7 @@ export default function PortalAdmin({ basePath }) {
     try {
       setLoading(true);
       setError('');
-      const res = await fetch(`${basePath}/admin/system`, {
+      const res = await fetch(`${BASE_URL}${basePath}/admin/system`, {
         headers: {
           Authorization: 'Bearer admin-master-access-token-991',
         },
@@ -54,7 +55,7 @@ export default function PortalAdmin({ basePath }) {
   const handleFetchEnvHoneytoken = async () => {
     try {
       setEnvLoading(true);
-      const res = await fetch(`${basePath}/.env`);
+      const res = await fetch(`${BASE_URL}${basePath}/.env`);
       const text = await res.text();
       setEnvContent(text);
       setEnvModalOpen(true);
@@ -290,3 +291,4 @@ export default function PortalAdmin({ basePath }) {
     </div>
   );
 }
+

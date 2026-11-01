@@ -8,6 +8,7 @@ import {
   AlertCircle,
   KeyRound,
 } from 'lucide-react';
+import { BASE_URL } from '../api/client';
 
 export default function PortalPasswordReset({ onBackToLogin, basePath }) {
   const [email, setEmail] = useState('');
@@ -27,7 +28,7 @@ export default function PortalPasswordReset({ onBackToLogin, basePath }) {
       setError('');
       setMessage('');
 
-      const res = await fetch(`${basePath}/auth/password/reset`, {
+      const res = await fetch(`${BASE_URL}${basePath}/auth/password/reset`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
@@ -162,3 +163,4 @@ export default function PortalPasswordReset({ onBackToLogin, basePath }) {
     </div>
   );
 }
+

@@ -15,6 +15,7 @@ import {
   Shield,
   Layers,
 } from 'lucide-react';
+import { BASE_URL } from '../api/client';
 
 export default function PortalCustomers({ basePath }) {
   const [customers, setCustomers] = useState([]);
@@ -28,7 +29,7 @@ export default function PortalCustomers({ basePath }) {
     try {
       setLoading(true);
       setError('');
-      const res = await fetch(`${basePath}/customers`);
+      const res = await fetch(`${BASE_URL}${basePath}/customers`);
       if (!res.ok) {
         throw new Error(`Failed to load customer registry: HTTP ${res.status}`);
       }
@@ -296,3 +297,4 @@ export default function PortalCustomers({ basePath }) {
     </div>
   );
 }
+

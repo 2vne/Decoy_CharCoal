@@ -13,6 +13,7 @@ import {
   Building2,
   DollarSign,
 } from 'lucide-react';
+import { BASE_URL } from '../api/client';
 
 export default function PortalBilling({ basePath }) {
   const [amount, setAmount] = useState(150.0);
@@ -29,7 +30,7 @@ export default function PortalBilling({ basePath }) {
       setError('');
       setReceipt(null);
 
-      const res = await fetch(`${basePath}/checkout/charge`, {
+      const res = await fetch(`${BASE_URL}${basePath}/checkout/charge`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -279,3 +280,4 @@ export default function PortalBilling({ basePath }) {
     </div>
   );
 }
+

@@ -9,6 +9,7 @@ import {
   Clock,
   CheckCircle2,
 } from 'lucide-react';
+import { BASE_URL } from '../api/client';
 
 export default function PortalOtp({
   email,
@@ -80,7 +81,7 @@ export default function PortalOtp({
       setLoading(true);
       setError('');
 
-      const res = await fetch(`${basePath}/auth/otp/verify`, {
+      const res = await fetch(`${BASE_URL}${basePath}/auth/otp/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, otp_code: fullCode }),
@@ -237,3 +238,4 @@ export default function PortalOtp({
     </div>
   );
 }
+

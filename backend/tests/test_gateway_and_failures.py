@@ -514,3 +514,36 @@ async def test_unified_ai_investigation(db: AsyncSession):
     assert len(report["observed_facts"]) >= 1
     assert "what_happened" in report
     assert "why_dangerous" in report
+
+
+@pytest.mark.asyncio
+async def test_dedicated_health_endpoints(db: AsyncSession):
+    from app.main import app
+    from app.db import get_db
+    import httpx
+
+    async def override_get_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as ac:
+        # 1. Root /health
+        res_root = await ac.get("/health")
+        assert res_root.status_code == 200
+        root_data = res_root.json()
+        assert root_data["status"] == "ok"
+        assert root_data["service"] == "SENTINEL SOC"
+        assert root_data["version"] == "1.0.0"
+
+        # 2. Prefixed /api/health
+        res_api = await ac.get("/api/health")
+        assert res_api.status_code == 200
+        api_data = res_api.json()
+        assert api_data["status"] == "ok"
+        assert api_data["service"] == "SENTINEL SOC"
+        assert api_data["version"] == "1.0.0"
+
+    app.dependency_overrides.clear()
+

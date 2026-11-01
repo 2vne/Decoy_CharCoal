@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Shield,
   Lock,
@@ -11,6 +11,7 @@ import {
   KeyRound,
   ExternalLink,
 } from 'lucide-react';
+import { BASE_URL, api } from '../api/client';
 
 export default function PortalLogin({
   onLoginSuccess,
@@ -24,6 +25,23 @@ export default function PortalLogin({
   const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [backendStatus, setBackendStatus] = useState('checking');
+
+  useEffect(() => {
+    let unmounted = false;
+    const probe = async () => {
+      const res = await api.checkHealth();
+      if (!unmounted) {
+        setBackendStatus(res.ok ? 'connected' : 'disconnected');
+      }
+    };
+    probe();
+    const interval = setInterval(probe, 5000);
+    return () => {
+      unmounted = true;
+      clearInterval(interval);
+    };
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -36,7 +54,7 @@ export default function PortalLogin({
       setLoading(true);
       setError('');
 
-      const res = await fetch(`${basePath}/auth/login`, {
+      const res = await fetch(`${BASE_URL}${basePath}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -119,6 +137,36 @@ export default function PortalLogin({
             >
               Production Real
             </button>
+          </div>
+        </div>
+
+        {/* Backend Connectivity Status Pill */}
+        <div className="mt-2.5 flex items-center justify-center">
+          <div
+            className={`inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-[11px] font-mono border transition shadow-sm ${
+              backendStatus === 'connected'
+                ? 'bg-emerald-950/70 border-emerald-500/40 text-emerald-300'
+                : backendStatus === 'checking'
+                ? 'bg-slate-800 border-slate-700 text-slate-300'
+                : 'bg-rose-950/80 border-rose-500/50 text-rose-300 animate-pulse'
+            }`}
+          >
+            <span
+              className={`h-2 w-2 rounded-full ${
+                backendStatus === 'connected'
+                  ? 'bg-emerald-400'
+                  : backendStatus === 'checking'
+                  ? 'bg-amber-400 animate-ping'
+                  : 'bg-rose-500'
+              }`}
+            />
+            <span>
+              {backendStatus === 'connected'
+                ? 'Backend Connected'
+                : backendStatus === 'checking'
+                ? 'Connecting to Backend...'
+                : 'Backend Disconnected (Retrying...)'}
+            </span>
           </div>
         </div>
       </div>
@@ -273,3 +321,4 @@ export default function PortalLogin({
     </div>
   );
 }
+

@@ -66,16 +66,26 @@ export function SocProvider({ children }) {
   // Fetch actual data from real FastAPI backend
   const refreshAllData = useCallback(async () => {
     try {
+      // 1. Check dedicated lightweight health check
+      const healthCheck = await api.checkHealth();
+      if (!healthCheck.ok) {
+        throw new Error(healthCheck.error || `Health probe failed (HTTP ${healthCheck.status})`);
+      }
+
+      // 2. Fetch endpoints in parallel with resilient fallbacks for honeypot infrastructure
       const [ovData, evData, atkData, hpData, incData, relData, blkData, metData, actData, fnStatsData, fnEvData] = await Promise.all([
         api.getOverview(),
         api.getEvents({ limit: 100 }),
         api.getAttackers(),
-        api.getHoneypotHealth(),
-        api.getIncidents(),
-        api.getRelationships(),
-        api.getBlocks(),
-        api.getMetrics(),
-        api.getActions(),
+        api.getHoneypotHealth().catch((e) => {
+          console.warn('Honeypot container health warning (non-fatal):', e.message);
+          return { honeypots: [] };
+        }),
+        api.getIncidents().catch(() => ({ incidents: [] })),
+        api.getRelationships().catch(() => ({ relationships: [] })),
+        api.getBlocks().catch(() => ({ blocks: [] })),
+        api.getMetrics().catch(() => null),
+        api.getActions().catch(() => []),
         api.getFunctionStats().catch(() => null),
         api.getFunctionEvents({ limit: 50 }).catch(() => ({ events: [] })),
       ]);
@@ -258,10 +268,30 @@ export function SocProvider({ children }) {
       refreshAllData();
     }, 15000);
 
+    // Dedicated fast-polling health recovery worker (5s)
+    const healthInterval = setInterval(async () => {
+      try {
+        const h = await api.checkHealth();
+        if (h.ok) {
+          setBackendError((prevErr) => {
+            if (prevErr) {
+              console.log('Backend health restored; triggering automatic data recovery...');
+              refreshAllData();
+              return null;
+            }
+            return null;
+          });
+        }
+      } catch {
+        // Handled silently by health probe
+      }
+    }, 5000);
+
     return () => {
       unmounted = true;
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
       clearInterval(pollInterval);
+      clearInterval(healthInterval);
       if (wsRef.current) wsRef.current.close();
     };
   }, [refreshAllData, addToast]);
@@ -413,6 +443,7 @@ export function SocProvider({ children }) {
       value={{
         isDemoMode,
         isLiveConnected,
+        isBackendConnected: !backendError,
         loading,
         backendError,
         overview,

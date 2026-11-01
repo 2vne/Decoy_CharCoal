@@ -1,4 +1,4 @@
-const BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/+$/, '');
+export const BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/+$/, '');
 
 /**
  * Backend Endpoint Authentication Analysis:
@@ -81,6 +81,32 @@ async function handleResponse(res) {
 export const api = {
   getBaseUrl() {
     return BASE_URL;
+  },
+
+  async checkHealth() {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
+      let res;
+      try {
+        res = await fetch(`${BASE_URL}/api/health`, { signal: controller.signal });
+      } catch {
+        try {
+          res = await fetch(`${BASE_URL}/health`, { signal: controller.signal });
+        } catch {
+          res = null;
+        }
+      } finally {
+        clearTimeout(timeoutId);
+      }
+      if (res && res.ok) {
+        const data = await res.json().catch(() => ({}));
+        return { ok: true, data };
+      }
+      return { ok: false, status: res ? res.status : 0 };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
   },
 
   async getOverview() {

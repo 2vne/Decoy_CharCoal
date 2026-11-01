@@ -10,6 +10,11 @@ from app.services.health import get_honeypot_health
 router = APIRouter()
 
 
+@router.get("/health")
+async def health_check():
+    return {"status": "ok", "service": "SENTINEL SOC", "version": "1.0.0"}
+
+
 @router.get("/honeypots/health")
 async def get_hp_health(db: AsyncSession = Depends(get_db)):
     health_list = await get_honeypot_health(db)

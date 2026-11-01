@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Shield,
   LayoutDashboard,
@@ -14,6 +14,7 @@ import {
   ChevronDown,
   Terminal,
 } from 'lucide-react';
+import { BASE_URL, api } from '../api/client';
 
 export default function PortalLayout({
   user,
@@ -25,6 +26,23 @@ export default function PortalLayout({
   children,
 }) {
   const [envDropdownOpen, setEnvDropdownOpen] = useState(false);
+  const [backendConnected, setBackendConnected] = useState(true);
+
+  useEffect(() => {
+    let unmounted = false;
+    const probe = async () => {
+      const res = await api.checkHealth();
+      if (!unmounted) {
+        setBackendConnected(res.ok);
+      }
+    };
+    probe();
+    const interval = setInterval(probe, 5000);
+    return () => {
+      unmounted = true;
+      clearInterval(interval);
+    };
+  }, []);
 
   const navItems = [
     { id: 'dashboard', label: 'Operations Dashboard', icon: LayoutDashboard },
@@ -116,6 +134,18 @@ export default function PortalLayout({
 
           {/* Right User & Links */}
           <div className="flex items-center space-x-4">
+            {/* Backend Connectivity Status Badge */}
+            <div
+              className={`hidden sm:flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-mono font-medium border transition ${
+                backendConnected
+                  ? 'bg-emerald-950/70 border-emerald-500/40 text-emerald-300'
+                  : 'bg-rose-950/80 border-rose-500/50 text-rose-300 animate-pulse'
+              }`}
+            >
+              <span className={`h-2 w-2 rounded-full ${backendConnected ? 'bg-emerald-400' : 'bg-rose-500 animate-ping'}`} />
+              <span>{backendConnected ? 'Backend Connected' : 'Backend Disconnected'}</span>
+            </div>
+
             {/* Link back to SOC Dashboard */}
             <a
               href="/"
@@ -185,11 +215,13 @@ export default function PortalLayout({
           <div className="mt-4 bg-white border border-slate-200 rounded-xl p-4 shadow-sm text-xs space-y-2 hidden md:block">
             <div className="flex items-center justify-between text-slate-500 font-medium">
               <span>SaaS Gateway Ingress</span>
-              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              <span className={`h-2 w-2 rounded-full ${backendConnected ? 'bg-emerald-500' : 'bg-rose-500 animate-pulse'}`} />
             </div>
-            <div className="text-slate-900 font-bold">127.0.0.1:8000</div>
+            <div className="text-slate-900 font-bold">{BASE_URL.replace(/^https?:\/\//, '')}</div>
             <div className="text-[11px] text-slate-400">
-              High-availability reverse proxy with automated honeynet diversion policy.
+              {backendConnected
+                ? 'High-availability reverse proxy with automated honeynet diversion policy.'
+                : 'Connection to backend lost. Polling health endpoints for automatic recovery...'}
             </div>
           </div>
         </aside>
@@ -210,3 +242,4 @@ export default function PortalLayout({
     </div>
   );
 }
+

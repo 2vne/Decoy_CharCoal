@@ -18,6 +18,7 @@ import {
   Layers,
   Zap,
 } from 'lucide-react';
+import { BASE_URL } from '../api/client';
 
 export default function PortalDashboard({
   user,
@@ -32,7 +33,7 @@ export default function PortalDashboard({
     try {
       setLoading(true);
       setError('');
-      const res = await fetch(`${basePath}/user/dashboard`);
+      const res = await fetch(`${BASE_URL}${basePath}/user/dashboard`);
       if (!res.ok) {
         throw new Error(`Failed to load dashboard: HTTP ${res.status}`);
       }
@@ -298,3 +299,4 @@ export default function PortalDashboard({
     </div>
   );
 }
+
