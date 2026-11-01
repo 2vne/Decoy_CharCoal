@@ -2,20 +2,20 @@ export function resolveBaseUrl() {
   const envUrl = import.meta.env.VITE_API_URL;
   if (typeof window !== 'undefined' && window.location) {
     const currentHost = window.location.hostname;
-    // If VITE_API_URL is configured
-    if (envUrl && envUrl.trim()) {
-      const cleanEnv = envUrl.trim().replace(/\/+$/, '');
-      // If user is accessing from another computer on Wi-Fi/LAN (e.g. PC2)
-      // and the env variable was left pointing to localhost, auto-substitute PC1's hostname
-      if (currentHost && currentHost !== 'localhost' && currentHost !== '127.0.0.1') {
-        return cleanEnv.replace('://localhost:', `://${currentHost}:`).replace('://127.0.0.1:', `://${currentHost}:`);
-      }
-      return cleanEnv;
+    const protocol = window.location.protocol || 'http:';
+
+    // If accessed locally (localhost / 127.0.0.1), always prefer local backend port 8000
+    if (currentHost === 'localhost' || currentHost === '127.0.0.1') {
+      return `${protocol}//localhost:8000`;
     }
-    // If no VITE_API_URL is set, dynamically use current host on port 8000
+
+    // If accessing over LAN (e.g. PC2 -> PC1 or mobile device)
     if (currentHost) {
-      const protocol = window.location.protocol || 'http:';
       return `${protocol}//${currentHost}:8000`;
+    }
+
+    if (envUrl && envUrl.trim()) {
+      return envUrl.trim().replace(/\/+$/, '');
     }
   }
   return (envUrl || 'http://localhost:8000').trim().replace(/\/+$/, '');
@@ -107,11 +107,15 @@ export const api = {
   },
 
   async checkHealth() {
+    const host = typeof window !== 'undefined' && window.location ? window.location.hostname : 'localhost';
+    const proto = typeof window !== 'undefined' && window.location ? window.location.protocol : 'http:';
     const candidateBases = [
       BASE_URL,
-      BASE_URL.includes('localhost') ? BASE_URL.replace('localhost', '127.0.0.1') : BASE_URL.replace('127.0.0.1', 'localhost'),
+      `${proto}//${host}:8000`,
+      'http://localhost:8000',
+      'http://127.0.0.1:8000',
     ];
-    const uniqueBases = Array.from(new Set(candidateBases));
+    const uniqueBases = Array.from(new Set(candidateBases.filter(Boolean)));
     const endpoints = ['/api/health', '/health', '/api/overview'];
 
     for (const base of uniqueBases) {

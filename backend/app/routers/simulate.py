@@ -37,7 +37,15 @@ async def start_simulate(
 ):
     body = await request.json()
     scenario = body.get("scenario", "full_chain")
-    speed = float(body.get("speed", 1.0))
+    raw_speed = body.get("speed", 1.0)
+    speed_map = {"fast": 2.5, "faster": 4.0, "normal": 1.0, "slow": 0.5}
+    if isinstance(raw_speed, str) and raw_speed in speed_map:
+        speed = speed_map[raw_speed]
+    else:
+        try:
+            speed = float(raw_speed)
+        except (ValueError, TypeError):
+            speed = 1.0
 
     # Immediate concurrent dispatch of attack alerts to Email, PagerDuty, and Twilio in parallel
     async def dispatch_attack_alerts():

@@ -366,3 +366,23 @@ async def real_customers(request: Request = None, db: AsyncSession = Depends(get
     return {"customers": DUMMY_CUSTOMERS, "count": len(DUMMY_CUSTOMERS)}
 
 
+# Standalone App instance for multi-process deployment (Port :8001)
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+app = FastAPI(title="Production Real Application", version="1.0.0")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=r"^https?://.*$",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+app.include_router(router)
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("app.demo_apps.real_app:app", host="0.0.0.0", port=8001, reload=True)
+
+
+

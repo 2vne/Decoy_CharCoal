@@ -7,16 +7,15 @@ function resolveWsUrl() {
   const envWs = import.meta.env.VITE_WS_URL;
   if (typeof window !== 'undefined' && window.location) {
     const currentHost = window.location.hostname;
-    if (envWs && envWs.trim()) {
-      const cleanWs = envWs.trim();
-      if (currentHost && currentHost !== 'localhost' && currentHost !== '127.0.0.1') {
-        return cleanWs.replace('://localhost:', `://${currentHost}:`).replace('://127.0.0.1:', `://${currentHost}:`);
-      }
-      return cleanWs;
+    const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    if (currentHost === 'localhost' || currentHost === '127.0.0.1') {
+      return `${wsProto}//localhost:8000/ws/live`;
     }
     if (currentHost) {
-      const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       return `${wsProto}//${currentHost}:8000/ws/live`;
+    }
+    if (envWs && envWs.trim()) {
+      return envWs.trim();
     }
   }
   return (envWs || 'ws://localhost:8000/ws/live').trim();
