@@ -89,6 +89,21 @@ class Settings(BaseSettings):
     decoy_min_independent_categories: int = 2
     emergency_single_vector_divert: bool = False
 
+    # Event-Triggered Dynamic Session Diversion
+    critical_event_immediate_divert: bool = True
+    critical_event_types: list = [
+        "secrets_probe",
+        "git_probe",
+        "payment_manipulation",
+        "unauthorized_db_probe",
+        "admin_escalation",
+        "config_probe",
+    ]
+    critical_event_categories: list = [
+        "secrets_probing",
+        "database_access",
+    ]
+
     @field_validator("safe_ips", mode="before")
     @classmethod
     def parse_safe_ips(cls, v):

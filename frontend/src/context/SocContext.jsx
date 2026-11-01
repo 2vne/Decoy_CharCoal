@@ -45,6 +45,7 @@ export function SocProvider({ children }) {
   const [functionStats, setFunctionStats] = useState(null);
   const [latestRiskScoreUpdate, setLatestRiskScoreUpdate] = useState(null);
   const [latestSessionTransition, setLatestSessionTransition] = useState(null);
+  const [sessionTransitions, setSessionTransitions] = useState([]);
 
   // UI Toast notification state
   const [toasts, setToasts] = useState([]);
@@ -247,10 +248,13 @@ export function SocProvider({ children }) {
               addToast(`Auto-Rollback Complete: ${payload.ip} unblocked`, 'info');
             } else if (type === 'session_transition') {
               setLatestSessionTransition(payload);
-              addToast(`TRANSITION: ${payload.transition} for ${payload.src_ip} (Score: ${payload.new_score})`, 'warning');
+              setSessionTransitions((prev) => [payload, ...prev.slice(0, 49)]);
+              addToast(`SESSION DIVERTED: REAL → DECOY for ${payload.session_id} (${payload.reason || 'Critical security violation'})`, 'error');
             } else if (type === 'risk_score_update') {
               setLatestRiskScoreUpdate(payload);
               if (payload.routing_transition) {
+                setLatestSessionTransition(payload.routing_transition);
+                setSessionTransitions((prev) => [payload.routing_transition, ...prev.slice(0, 49)]);
                 addToast(`DIVERSION EVENT: ${payload.routing_transition.transition} (${payload.src_ip})`, 'error');
               }
             }
@@ -493,6 +497,7 @@ export function SocProvider({ children }) {
         incomingPing,
         latestRiskScoreUpdate,
         latestSessionTransition,
+        sessionTransitions,
         refreshAllData,
         blockAttacker: blockAttackerAction,
         unblockAttacker: unblockAttackerAction,

@@ -446,21 +446,33 @@ def evaluate_routing_decision(
     independent_categories_count: int,
     active_categories: List[str],
     is_already_diverted: bool = False,
+    is_critical_event: bool = False,
+    critical_event_reason: Optional[str] = None,
 ) -> Tuple[str, str]:
     """
-    Evaluates dynamic route with independent-category safeguard:
+    Evaluates dynamic route with independent-category safeguard and critical event policy:
+    - If already diverted: remains isolated on decoy.
+    - If critical event occurred (e.g. .env, .git, payment tampering, unauthorized db dump)
+      and critical_event_immediate_divert is enabled: immediately divert to decoy.
     - 0-29: real (Normal legitimate traffic)
     - 30-49: real (Enhanced monitoring)
     - 50-69: real (Additional scrutiny)
     - 70-100: decoy (High risk / Likely malicious)
       SAFEGUARD: Requires evidence from at least TWO independent behaviour categories,
       unless emergency policy is explicitly enabled.
-    - If already diverted: remains isolated on decoy.
     """
     if is_already_diverted:
         return (
             "decoy",
             "Session previously diverted to isolated honeypot; real application access prohibited.",
+        )
+
+    # 1. High-Confidence Critical Event Policy: Immediate diversion regardless of cumulative score
+    if is_critical_event and getattr(settings, "critical_event_immediate_divert", True):
+        detail = critical_event_reason or "High-confidence critical security violation"
+        return (
+            "decoy",
+            f"Diverted to DECOY: Immediate diversion policy triggered by critical security violation ({detail}).",
         )
 
     threshold = settings.decoy_routing_threshold
@@ -551,6 +563,8 @@ async def record_behaviour_event(
     evidence: str = "",
     account_email: Optional[str] = None,
     is_simulated: bool = False,
+    is_critical: bool = False,
+    critical_reason: Optional[str] = None,
     now: Optional[datetime] = None,
 ) -> Dict[str, Any]:
     """
@@ -558,12 +572,17 @@ async def record_behaviour_event(
     1. Deduplicates rapid consecutive duplicate events using a temporal fingerprint.
     2. Persists the ObservedBehaviourEvent.
     3. Recomputes rolling 0-100 behaviour score with time decay.
-    4. Evaluates gateway routing decision with independent-category safeguard.
-    5. Records REAL -> DECOY transition if threshold is crossed.
+    4. Evaluates gateway routing decision with independent-category safeguard and critical policy.
+    5. Records REAL -> DECOY transition immediately if threshold crossed or critical event occurs.
     6. Updates Session, Account, and IP records.
-    7. Broadcasts live updates over WebSockets.
+    7. Broadcasts live updates and transitions over WebSockets immediately.
     """
     now_utc = now or datetime.now(timezone.utc)
+
+    # Detect if event triggers the critical security policy
+    critical_types = getattr(settings, "critical_event_types", [])
+    critical_cats = getattr(settings, "critical_event_categories", [])
+    is_crit = bool(is_critical or (event_type in critical_types) or (category in critical_cats and "probe" in event_type))
 
     # 1. Temporal fingerprint for deduplication
     if is_simulated:
@@ -637,12 +656,15 @@ async def record_behaviour_event(
     sess.reason_codes = calc["reason_codes"]
     sess.last_seen = now_utc
 
-    # 5. Evaluate routing decision with safeguard
+    # 5. Evaluate routing decision with safeguard & critical policy
+    crit_desc = critical_reason or evidence or f"{category.upper()} - {event_type}"
     new_route, route_reason = evaluate_routing_decision(
         risk_score=new_score,
         independent_categories_count=calc["independent_categories_count"],
         active_categories=calc["active_categories"],
         is_already_diverted=sess.is_diverted,
+        is_critical_event=is_crit,
+        critical_event_reason=crit_desc,
     )
 
     # 6. Check for REAL -> DECOY transition
@@ -658,19 +680,23 @@ async def record_behaviour_event(
             "session_id": session_id,
             "src_ip": src_ip,
             "account_email": account_email,
+            "triggering_event": event_type,
+            "triggering_category": category,
+            "severity": "critical" if is_crit else ("high" if new_score >= 70 else "medium"),
             "previous_score": old_score,
             "new_score": new_score,
             "classification": new_classification,
             "independent_categories": [c for c in calc["active_categories"] if c != "combined_patterns"],
             "reason": route_reason,
             "timestamp": now_utc.isoformat(),
+            "is_critical_divert": is_crit,
         }
 
         transitions = list(sess.routing_transitions or [])
         transitions.append(transition_record)
         sess.routing_transitions = transitions
 
-        # Broadcast explicit transition event
+        # Broadcast explicit transition event immediately
         try:
             await broadcast("session_transition", transition_record)
         except Exception:

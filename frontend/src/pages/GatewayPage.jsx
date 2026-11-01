@@ -37,7 +37,7 @@ import { useSoc } from '../context/SocContext';
 import { api } from '../api/client';
 
 export default function GatewayPage() {
-  const { addToast, latestRiskScoreUpdate, latestSessionTransition } = useSoc();
+  const { addToast, latestRiskScoreUpdate, latestSessionTransition, sessionTransitions = [] } = useSoc();
   const [stats, setStats] = useState(null);
   const [sessions, setSessions] = useState([]);
   const [pointAllocations, setPointAllocations] = useState({});
@@ -860,6 +860,89 @@ export default function GatewayPage() {
       </div>
 
       {/* ============================================================ */}
+      {/* REAL-TO-DECOY DYNAMIC SESSION DIVERSIONS (LIVE SOC STREAM)   */}
+      {/* ============================================================ */}
+      <div className="bg-slate-900 border border-red-500/30 rounded-lg p-5 font-mono space-y-4 shadow-lg">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+          <div>
+            <div className="flex items-center space-x-2">
+              <ShieldAlert className="w-5 h-5 text-red-400 animate-pulse" />
+              <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                REAL-TO-DECOY DYNAMIC SESSION DIVERSIONS
+                <span className="text-[10px] px-2 py-0.5 rounded bg-red-950 border border-red-500/40 text-red-300 font-bold">
+                  LIVE POLICY ENFORCEMENT
+                </span>
+              </h2>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1">
+              Authoritative server-side session transitions triggered immediately upon qualifying malicious behavior or cumulative risk threshold.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs px-2.5 py-1 rounded bg-red-950/60 border border-red-500/40 text-red-300 font-bold">
+              {sessionTransitions.length} Diversions Recorded
+            </span>
+          </div>
+        </div>
+
+        {sessionTransitions.length === 0 ? (
+          <div className="p-4 rounded bg-slate-950 border border-slate-800 text-center text-xs text-slate-500">
+            No real-to-decoy diversions in current session. Qualifying malicious operations (e.g. .env, .git, payment manipulation) trigger immediate diversion.
+          </div>
+        ) : (
+          <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+            {sessionTransitions.map((tr, idx) => (
+              <div
+                key={idx}
+                className="p-3 rounded bg-slate-950 border border-red-500/30 text-xs flex flex-col md:flex-row md:items-center justify-between gap-3 hover:border-red-500/60 transition-all"
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center space-x-2">
+                    <span className="font-bold text-white">{tr.session_id}</span>
+                    <span className="text-slate-400 text-[11px]">({tr.src_ip})</span>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950 border border-emerald-500/40 text-emerald-300">
+                      REAL
+                    </span>
+                    <ArrowRight className="w-3.5 h-3.5 text-red-400" />
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-950 border border-red-500/50 text-red-300 animate-pulse">
+                      DECOY
+                    </span>
+                    <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold border ${
+                      tr.severity === 'critical' ? 'bg-red-950 text-red-300 border-red-600' : 'bg-amber-950 text-amber-300 border-amber-600'
+                    }`}>
+                      {tr.severity || 'CRITICAL'}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-300 flex items-center gap-2">
+                    <span className="text-amber-400 font-semibold">{tr.triggering_event || tr.triggering_category || 'Malicious Operation'}:</span>
+                    <span className="text-slate-400 italic">{tr.reason}</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-3 shrink-0">
+                  <div className="text-right">
+                    <div className="text-[11px] font-bold text-slate-200">
+                      Risk: <span className="text-slate-400">{tr.previous_score ?? 0}</span> → <span className="text-red-400">{tr.new_score}</span>
+                    </div>
+                    <div className="text-[10px] text-slate-500">
+                      {tr.timestamp ? new Date(tr.timestamp).toLocaleTimeString() : 'Just now'}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleInspectSession({ session_id: tr.session_id, src_ip: tr.src_ip })}
+                    className="px-2.5 py-1 bg-red-900/40 hover:bg-red-800 text-red-200 rounded border border-red-500/40 text-[10px] font-bold flex items-center gap-1"
+                  >
+                    <Eye className="w-3 h-3" />
+                    Inspect
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ============================================================ */}
       {/* HACKATHON DEMONSTRATION PANEL: LIVE ATTACK SCENARIO SIMULATOR */}
       {/* ============================================================ */}
       <div className="bg-gradient-to-r from-slate-900 via-slate-900 to-blue-950/40 border-2 border-blue-500/50 rounded-lg p-5 font-mono space-y-4 shadow-xl">
@@ -1503,23 +1586,70 @@ export default function GatewayPage() {
               {selectedSession.routing_transitions && selectedSession.routing_transitions.length > 0 && (
                 <div className="space-y-2">
                   <h4 className="text-white font-bold text-xs flex items-center gap-1.5">
-                    <History className="w-3.5 h-3.5 text-blue-400" />
-                    ROUTING TRANSITION TIMELINE
+                    <History className="w-3.5 h-3.5 text-red-400" />
+                    ROUTING TRANSITION TIMELINE (REAL → DECOY)
                   </h4>
-                  <div className="space-y-1.5">
+                  <div className="space-y-2">
                     {selectedSession.routing_transitions.map((tr, idx) => (
                       <div
                         key={idx}
-                        className="p-2 rounded bg-slate-950 border border-slate-800 text-[11px] flex items-center justify-between"
+                        className="p-3 rounded bg-slate-950 border border-red-500/30 text-[11px] space-y-1.5"
                       >
-                        <div className="flex items-center space-x-2">
-                          <span className="font-bold text-slate-300">
-                            {tr.from_route?.toUpperCase()} → {tr.to_route?.toUpperCase()}
-                          </span>
-                          <span className="text-slate-500">at risk score {tr.risk_score}</span>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <span className="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 font-bold text-[10px]">REAL</span>
+                            <ArrowRight className="w-3 h-3 text-red-400" />
+                            <span className="px-1.5 py-0.5 rounded bg-red-950 text-red-300 font-bold text-[10px] animate-pulse">DECOY</span>
+                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase border ${
+                              tr.severity === 'critical' ? 'bg-red-950 text-red-300 border-red-600' : 'bg-amber-950 text-amber-300 border-amber-600'
+                            }`}>
+                              {tr.severity || 'CRITICAL'}
+                            </span>
+                            <span className="text-slate-400 text-[10px] font-mono">
+                              Risk: {tr.previous_score ?? 0} → {tr.new_score ?? tr.risk_score}
+                            </span>
+                          </div>
+                          <div className="text-slate-500 text-[10px]">
+                            {tr.timestamp ? new Date(tr.timestamp).toLocaleTimeString() : 'recorded'}
+                          </div>
                         </div>
-                        <div className="text-slate-400 text-[10px]">
-                          {tr.timestamp ? new Date(tr.timestamp).toLocaleTimeString() : 'recorded'}
+                        {tr.triggering_event && (
+                          <div className="text-amber-400 font-semibold text-[10px]">
+                            Triggering Behaviour: {tr.triggering_event} ({tr.triggering_category || 'security_policy'})
+                          </div>
+                        )}
+                        <div className="text-slate-300 text-[10px] italic">
+                          &ldquo;{tr.reason || 'Diverted to isolated decoy honeypot.'}&rdquo;
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Decoy Interactions After Diversion */}
+              {sessionDetail?.decoy_interactions && sessionDetail.decoy_interactions.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-white font-bold text-xs flex items-center gap-1.5 text-purple-300">
+                    <Target className="w-3.5 h-3.5 text-purple-400" />
+                    DECOY INTERACTIONS AFTER DIVERSION ({sessionDetail.decoy_interactions.length})
+                  </h4>
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                    {sessionDetail.decoy_interactions.map((decoyEv, idx) => (
+                      <div
+                        key={idx}
+                        className="p-2.5 rounded bg-purple-950/20 border border-purple-800/40 text-[11px] flex flex-col gap-1"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-purple-200">{decoyEv.target_function}</span>
+                          <span className="px-1.5 py-0.5 rounded text-[9px] uppercase font-bold bg-purple-900/60 text-purple-300 border border-purple-700/50">
+                            {decoyEv.result}
+                          </span>
+                        </div>
+                        <div className="text-slate-400 text-[10px] font-mono">{decoyEv.target_endpoint}</div>
+                        <div className="text-slate-300 text-[10px] italic">&ldquo;{decoyEv.evidence}&rdquo;</div>
+                        <div className="text-slate-500 text-[9px] text-right">
+                          {decoyEv.timestamp ? new Date(decoyEv.timestamp).toLocaleTimeString() : 'recorded'}
                         </div>
                       </div>
                     ))}

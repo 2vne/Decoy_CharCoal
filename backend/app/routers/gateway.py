@@ -112,6 +112,9 @@ async def reset_session_endpoint(
     if not target_sid:
         raise HTTPException(status_code=400, detail="session_id cannot be empty")
 
+    from app.demo_apps.real_app import REVOKED_SESSIONS, REVOKED_TOKENS
+    REVOKED_SESSIONS.discard(target_sid)
+
     # Delete observed behaviour events ONLY for this session
     del_stmt = delete(ObservedBehaviourEvent).where(ObservedBehaviourEvent.session_id == target_sid)
     await db.execute(del_stmt)
@@ -121,6 +124,16 @@ async def reset_session_endpoint(
     sess_res = await db.execute(sess_stmt)
     sess = sess_res.scalar_one_or_none()
     if sess:
+        # Reconcile attacker IP profile for demo isolation
+        atk_stmt = select(Attacker).where(Attacker.ip == sess.src_ip)
+        atk_res = await db.execute(atk_stmt)
+        atk = atk_res.scalar_one_or_none()
+        if atk:
+            atk.risk_score = 0.0
+            atk.function_risk_score = 0.0
+            atk.risk_band = "low"
+            atk.status = "active"
+
         sess.risk_score = 0.0
         sess.previous_risk_score = 0.0
         sess.risk_classification = "NORMAL"
@@ -468,13 +481,41 @@ async def get_visitor_session_risk(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Returns full behaviour breakdown, 0-100 score, severity mappings, and transition history for a session.
+    Returns full behaviour breakdown, 0-100 score, severity mappings, transition history,
+    and post-diversion decoy interactions for a session.
     """
     stmt = select(VisitorSessionRisk).where(VisitorSessionRisk.session_id == session_id)
     res = await db.execute(stmt)
     sess = res.scalar_one_or_none()
     if not sess:
         raise HTTPException(status_code=404, detail="Visitor session not found")
+
+    # Fetch post-diversion decoy interactions
+    decoy_interactions = []
+    if sess.is_diverted:
+        decoy_stmt = (
+            select(FunctionTargetEvent)
+            .where(
+                FunctionTargetEvent.src_ip == sess.src_ip,
+                FunctionTargetEvent.honeypot_source == "decoy_app",
+            )
+            .order_by(desc(FunctionTargetEvent.timestamp))
+            .limit(20)
+        )
+        decoy_res = await db.execute(decoy_stmt)
+        decoy_interactions = [
+            {
+                "id": ev.id,
+                "target_function": ev.target_function,
+                "target_endpoint": ev.target_endpoint,
+                "attack_type": ev.attack_type,
+                "severity": ev.severity,
+                "result": ev.result,
+                "evidence": ev.evidence,
+                "timestamp": ev.timestamp.isoformat() if ev.timestamp else None,
+            }
+            for ev in decoy_res.scalars().all()
+        ]
 
     return {
         "session_id": sess.session_id,
@@ -492,6 +533,8 @@ async def get_visitor_session_risk(
         "diverted_at": sess.diverted_at.isoformat() if sess.diverted_at else None,
         "diversion_reason": sess.diversion_reason,
         "routing_transitions": sess.routing_transitions or [],
+        "decoy_interactions": decoy_interactions,
+        "decoy_interactions_count": len(decoy_interactions),
         "request_count": sess.request_count,
         "first_seen": sess.first_seen.isoformat() if sess.first_seen else None,
         "last_seen": sess.last_seen.isoformat() if sess.last_seen else None,

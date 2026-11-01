@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_db
 from app.services.function_intelligence import record_function_targeting
 from app.services.ingest import get_or_create_attacker
+from app.services.gateway import extract_client_ip
 
 router = APIRouter(prefix="/demo/decoy", tags=["Decoy Honeypot Application"])
 
@@ -39,11 +40,8 @@ class DecoyChargeRequest(BaseModel):
 
 
 def _get_client_ip(request: Request) -> str:
-    # Use real forwarded IP if available, fallback to client host
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "127.0.0.1"
+    remote_addr = request.client.host if request.client else "127.0.0.1"
+    return extract_client_ip(dict(request.headers), remote_addr)
 
 
 @router.post("/auth/login")
@@ -275,6 +273,106 @@ async def decoy_env(request: Request, db: AsyncSession = Depends(get_db)):
         "STRIPE_SECRET_KEY=sk_test_fake_honeytoken_stripe_key_9921\n"
         "AWS_ACCESS_KEY_ID=AKIA_CANARY_FAKE_TRAP_KEY_789\n"
         "AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\n"
+    )
+
+
+@router.get("/.git")
+@router.get("/.git/{subpath:path}")
+async def decoy_git_probe(subpath: str = "", request: Request = None, db: AsyncSession = Depends(get_db)):
+    """Serves believable synthetic git honeytokens and traps attacker in decoy telemetry."""
+    ip = _get_client_ip(request)
+    now = datetime.now(timezone.utc)
+    attacker = await get_or_create_attacker(db, ip, now)
+    target_ep = f"/demo/decoy/.git/{subpath}" if subpath else "/demo/decoy/.git"
+
+    await record_function_targeting(
+        db=db,
+        attacker=attacker,
+        target_function="secrets_env",
+        target_endpoint=target_ep,
+        attack_type="git_repository_probe",
+        severity="critical",
+        result="trapped_in_decoy",
+        attempts=1,
+        honeypot_source="decoy_app",
+        evidence=f"[Observed] Decoy git repository probe: {target_ep} (Synthetic canary repo served)",
+        confidence=1.0,
+        is_simulated=False,
+        event_timestamp=now,
+    )
+    await db.commit()
+
+    return (
+        "[core]\n"
+        "\trepositoryformatversion = 0\n"
+        "\tfilemode = false\n"
+        "\tbare = false\n"
+        "[remote \"origin\"]\n"
+        "\turl = https://github-canary.sentinel.internal/deception-honeynet/core-api.git\n"
+        "\tfetch = +refs/heads/*:refs/remotes/origin/*\n"
+    )
+
+
+@router.post("/checkout/modify")
+@router.post("/checkout/confirm")
+async def decoy_payment_modify(request: Request, db: AsyncSession = Depends(get_db)):
+    """Synthetic fake payment modification handler in decoy sandbox."""
+    ip = _get_client_ip(request)
+    now = datetime.now(timezone.utc)
+    attacker = await get_or_create_attacker(db, ip, now)
+
+    await record_function_targeting(
+        db=db,
+        attacker=attacker,
+        target_function="payment_gateway",
+        target_endpoint="/demo/decoy/checkout/modify",
+        attack_type="financial_transaction_probe",
+        severity="critical",
+        result="trapped_in_decoy",
+        attempts=1,
+        honeypot_source="decoy_app",
+        evidence="[Observed] Decoy transaction modification probe recorded",
+        confidence=1.0,
+        is_simulated=False,
+        event_timestamp=now,
+    )
+    await db.commit()
+
+    return {
+        "status": "acknowledged",
+        "notice": "Transaction updated in sandbox buffer",
+        "decoy_watermark": "SEC-HONEYNET-TRACE-491",
+    }
+
+
+@router.get("/db/dump")
+async def decoy_db_dump(request: Request, db: AsyncSession = Depends(get_db)):
+    """Serves synthetic database dump honeytokens."""
+    ip = _get_client_ip(request)
+    now = datetime.now(timezone.utc)
+    attacker = await get_or_create_attacker(db, ip, now)
+
+    await record_function_targeting(
+        db=db,
+        attacker=attacker,
+        target_function="database_api",
+        target_endpoint="/demo/decoy/db/dump",
+        attack_type="database_exfiltration_probe",
+        severity="critical",
+        result="trapped_in_decoy",
+        attempts=1,
+        honeypot_source="decoy_app",
+        evidence="[Observed] Attacker downloaded synthetic canary SQL dump from decoy",
+        confidence=1.0,
+        is_simulated=False,
+        event_timestamp=now,
+    )
+    await db.commit()
+
+    return (
+        "-- SENTINEL CANARY HONEYTOKEN DB DUMP\n"
+        "CREATE TABLE canary_users (id INT, email VARCHAR(64), password_hash VARCHAR(128));\n"
+        "INSERT INTO canary_users VALUES (1, 'canary_admin@sentinel.fake', 'sha256$canary_fake_hash_99182');\n"
     )
 
 
