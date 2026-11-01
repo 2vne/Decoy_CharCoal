@@ -327,3 +327,4 @@ async def test_12_authorized_soc_reset_clears_diversion_cleanly(db: AsyncSession
         eval_after = await client.get("/api/gateway/evaluate", headers=headers)
         assert eval_after.headers.get("X-Sentinel-Route") == "real"
         assert float(eval_after.headers.get("X-Sentinel-Risk", "0")) == 0.0
+

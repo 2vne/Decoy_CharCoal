@@ -74,6 +74,13 @@ export default function GatewayPage() {
   const [demoTransitionAlert, setDemoTransitionAlert] = useState(null);
 
   const demoTimerRef = useRef(null);
+  const demoRunningRef = useRef(false);
+  demoRunningRef.current = demoRunning;
+  const demoPausedRef = useRef(false);
+  demoPausedRef.current = demoPaused;
+  const demoSpeedRef = useRef(demoSpeed);
+  demoSpeedRef.current = demoSpeed;
+  const currentScenarioRef = useRef(null);
 
   // Scenario Definitions
   const SCENARIOS = useMemo(
@@ -112,7 +119,7 @@ export default function GatewayPage() {
           },
           {
             label: 'Load customer overview dashboard',
-            category: 'customer_db_access',
+            category: 'database_access',
             endpoint: '/api/user/dashboard',
             method: 'GET',
             eventType: 'normal_access',
@@ -249,7 +256,7 @@ export default function GatewayPage() {
           },
           {
             label: 'Probe WordPress admin login URL',
-            category: 'admin_access_attempts',
+            category: 'admin_access',
             endpoint: '/wp-admin/login.php',
             method: 'GET',
             eventType: 'probe',
@@ -257,7 +264,7 @@ export default function GatewayPage() {
           },
           {
             label: 'Probe internal administration portal console',
-            category: 'admin_access_attempts',
+            category: 'admin_access',
             endpoint: '/admin/system/console',
             method: 'GET',
             eventType: 'probe',
@@ -265,7 +272,7 @@ export default function GatewayPage() {
           },
           {
             label: 'Probe production environment variables (.env)',
-            category: 'secrets_code_probing',
+            category: 'secrets_probing',
             endpoint: '/.env',
             method: 'GET',
             eventType: 'secrets_probe',
@@ -273,7 +280,7 @@ export default function GatewayPage() {
           },
           {
             label: 'Probe Git repository configuration (/.git/config)',
-            category: 'secrets_code_probing',
+            category: 'secrets_probing',
             endpoint: '/.git/config',
             method: 'GET',
             eventType: 'secrets_probe',
@@ -300,7 +307,7 @@ export default function GatewayPage() {
           },
           {
             label: 'Password-reset account enumeration abuse',
-            category: 'password_reset_abuse',
+            category: 'password_reset',
             endpoint: '/api/auth/reset-password',
             method: 'POST',
             eventType: 'probe',
@@ -332,7 +339,7 @@ export default function GatewayPage() {
           },
           {
             label: 'Unauthorized admin privilege escalation probe',
-            category: 'admin_access_attempts',
+            category: 'admin_access',
             endpoint: '/admin/system/console',
             method: 'GET',
             eventType: 'probe',
@@ -348,7 +355,7 @@ export default function GatewayPage() {
           },
           {
             label: 'Secrets and cloud credentials probing (.env, .aws)',
-            category: 'secrets_code_probing',
+            category: 'secrets_probing',
             endpoint: '/.env',
             method: 'GET',
             eventType: 'secrets_probe',
@@ -356,7 +363,7 @@ export default function GatewayPage() {
           },
           {
             label: 'Unauthorized customer & database extract attempt',
-            category: 'customer_db_access',
+            category: 'database_access',
             endpoint: '/api/customers/export',
             method: 'POST',
             eventType: 'data_access',
@@ -373,11 +380,15 @@ export default function GatewayPage() {
   const defaultAllocations = {
     login_failures: { max: 12, label: 'Repeated login failures' },
     otp_failures: { max: 8, label: 'Repeated OTP failures' },
+    password_reset: { max: 5, label: 'Password-reset abuse' },
     password_reset_abuse: { max: 5, label: 'Password-reset abuse' },
+    admin_access: { max: 15, label: 'Unauthorized admin access attempts' },
     admin_access_attempts: { max: 15, label: 'Unauthorized admin access attempts' },
+    secrets_probing: { max: 20, label: 'Source code, .env, secrets probing' },
     secrets_code_probing: { max: 20, label: 'Source code, .env, secrets probing' },
     endpoint_enumeration: { max: 15, label: 'Sensitive endpoint enumeration' },
     abnormal_rate: { max: 10, label: 'Abnormal request frequency' },
+    database_access: { max: 10, label: 'Unauthorized customer/database access' },
     customer_db_access: { max: 10, label: 'Unauthorized customer/database access' },
     combined_patterns: { max: 5, label: 'Combined suspicious patterns (synergy)' },
   };
@@ -525,14 +536,23 @@ export default function GatewayPage() {
     addToast('NGINX configuration copied to clipboard', 'info');
   };
 
+  currentScenarioRef.current = currentScenario;
+
   // ==========================================
   // HACKATHON LIVE DEMONSTRATION LOGIC
   // ==========================================
   const executeDemoStep = async (stepIndex) => {
-    const steps = currentScenario.steps;
+    if (demoTimerRef.current) {
+      clearTimeout(demoTimerRef.current);
+      demoTimerRef.current = null;
+    }
+
+    const scenario = currentScenarioRef.current || currentScenario;
+    const steps = scenario.steps;
     if (stepIndex >= steps.length) {
       setDemoRunning(false);
-      addToast(`Scenario "${currentScenario.title}" completed!`, 'success');
+      demoRunningRef.current = false;
+      addToast(`Scenario "${scenario.title}" completed!`, 'success');
       return;
     }
 
@@ -540,9 +560,9 @@ export default function GatewayPage() {
     try {
       // Ingest synthetic event through actual behaviour scoring engine
       const res = await api.ingestBehaviourEvent({
-        session_id: currentScenario.sessionId,
-        src_ip: currentScenario.ip,
-        account_email: currentScenario.account,
+        session_id: scenario.sessionId,
+        src_ip: scenario.ip,
+        account_email: scenario.account,
         category: step.category,
         endpoint: step.endpoint,
         event_type: step.eventType,
@@ -570,9 +590,9 @@ export default function GatewayPage() {
 
       setDemoEventsLog((prev) => [entry, ...prev]);
       setDemoSessionState({
-        session_id: currentScenario.sessionId,
-        src_ip: currentScenario.ip,
-        account_email: currentScenario.account,
+        session_id: scenario.sessionId,
+        src_ip: scenario.ip,
+        account_email: scenario.account,
         risk_score: res.current_risk_score,
         risk_classification: res.risk_classification,
         current_route: res.current_route,
@@ -583,49 +603,61 @@ export default function GatewayPage() {
         setDemoTransitionAlert(res.routing_transition);
       }
 
-      setDemoCurrentStepIndex(stepIndex + 1);
+      const nextIndex = stepIndex + 1;
+      setDemoCurrentStepIndex(nextIndex);
+
+      // Auto-schedule next step if running, not paused, and not in manual step mode
+      if (demoRunningRef.current && !demoPausedRef.current && demoSpeedRef.current !== 'step' && nextIndex < steps.length) {
+        const intervalMs = demoSpeedRef.current === 'fast' ? 2200 : 4500;
+        demoTimerRef.current = setTimeout(() => {
+          executeDemoStep(nextIndex);
+        }, intervalMs);
+      } else if (nextIndex >= steps.length) {
+        setDemoRunning(false);
+        demoRunningRef.current = false;
+        addToast(`Scenario "${scenario.title}" completed!`, 'success');
+      }
     } catch (err) {
       console.error('Demo step failed', err);
       addToast(`Step ${stepIndex + 1} error: ${err.message}`, 'error');
       setDemoRunning(false);
+      demoRunningRef.current = false;
     }
   };
 
-  // Step runner effect
+  // Cleanup on unmount
   useEffect(() => {
-    if (!demoRunning || demoPaused) return;
-
-    if (demoSpeed === 'step') {
-      // In step mode, user advances manually
-      return;
-    }
-
-    const intervalMs = demoSpeed === 'fast' ? 3200 : 5500;
-    demoTimerRef.current = setTimeout(() => {
-      executeDemoStep(demoCurrentStepIndex);
-    }, intervalMs);
-
     return () => {
       if (demoTimerRef.current) clearTimeout(demoTimerRef.current);
     };
-  }, [demoRunning, demoPaused, demoCurrentStepIndex, demoSpeed, currentScenario]);
+  }, []);
 
   const handleStartDemo = () => {
-    if (demoCurrentStepIndex >= currentScenario.steps.length) {
-      // Restart from beginning
+    let startIdx = demoCurrentStepIndex;
+    if (startIdx >= currentScenario.steps.length) {
+      startIdx = 0;
       setDemoCurrentStepIndex(0);
       setDemoEventsLog([]);
       setDemoTransitionAlert(null);
     }
     setDemoRunning(true);
+    demoRunningRef.current = true;
     setDemoPaused(false);
-    if (demoCurrentStepIndex === 0) {
-      executeDemoStep(0);
-    }
+    demoPausedRef.current = false;
+    executeDemoStep(startIdx);
   };
 
   const handlePauseDemo = () => {
-    setDemoPaused(!demoPaused);
+    const nextPaused = !demoPaused;
+    setDemoPaused(nextPaused);
+    demoPausedRef.current = nextPaused;
+    if (nextPaused) {
+      if (demoTimerRef.current) clearTimeout(demoTimerRef.current);
+    } else {
+      if (demoRunning && demoCurrentStepIndex < currentScenario.steps.length) {
+        executeDemoStep(demoCurrentStepIndex);
+      }
+    }
   };
 
   const handleManualStep = () => {

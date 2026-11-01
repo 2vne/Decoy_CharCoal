@@ -190,8 +190,9 @@ async def evaluate_nginx_auth_request(
     )
     await db.commit()
 
-    # Set response headers for NGINX to inspect
-    response.headers["X-Sentinel-Route"] = decision
+    # Set response headers for NGINX to inspect (matches architecture diagram: decoy vs real)
+    routing_target = "decoy" if decision == "decoy" else "real"
+    response.headers["X-Sentinel-Route"] = routing_target
     response.headers["X-Sentinel-Risk"] = str(score)
     response.headers["X-Sentinel-Client-IP"] = client_ip
     response.headers["X-Sentinel-Session"] = session_id

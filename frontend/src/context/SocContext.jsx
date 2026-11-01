@@ -9,7 +9,7 @@ function resolveWsUrl() {
     const currentHost = window.location.hostname;
     const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     if (currentHost === 'localhost' || currentHost === '127.0.0.1') {
-      return `${wsProto}//localhost:8000/ws/live`;
+      return `${wsProto}//127.0.0.1:8000/ws/live`;
     }
     if (currentHost) {
       return `${wsProto}//${currentHost}:8000/ws/live`;

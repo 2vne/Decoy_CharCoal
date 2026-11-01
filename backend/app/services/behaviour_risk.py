@@ -2,6 +2,7 @@ from __future__ import annotations
 from datetime import datetime, timezone, timedelta
 import hashlib
 import math
+import time
 from typing import Any, Dict, List, Optional, Tuple, Set
 
 from sqlalchemy import desc, func, select, delete
@@ -73,6 +74,19 @@ BEHAVIOUR_CATEGORIES: Dict[str, Dict[str, Any]] = {
         "default_max": 5,
     },
 }
+
+CATEGORY_ALIASES: Dict[str, str] = {
+    "password_reset_abuse": "password_reset",
+    "admin_access_attempts": "admin_access",
+    "secrets_code_probing": "secrets_probing",
+    "customer_db_access": "database_access",
+    "endpoint_enum": "endpoint_enumeration",
+    "rate_scanning": "abnormal_rate",
+}
+
+def normalize_category(cat: str) -> str:
+    c = (cat or "").strip().lower()
+    return CATEGORY_ALIASES.get(c, c)
 
 
 def get_configured_allocations() -> Dict[str, float]:
@@ -340,11 +354,20 @@ def compute_behaviour_risk_score(
     all_recent_sensitive_endpoints: Set[str] = set()
 
     one_minute_ago = now_utc - timedelta(seconds=60)
+    has_rate_spike: bool = False
 
     for ev in events:
-        cat = ev.category
+        raw_cat = ev.category
+        cat = normalize_category(raw_cat)
         if cat not in BEHAVIOUR_CATEGORIES:
             continue
+
+        # Ignore benign activity from attack counter calculations
+        if ev.event_type in ("auth_success", "normal_access", "page_view", "api_read"):
+            continue
+
+        if ev.event_type == "rate_spike":
+            has_rate_spike = True
 
         category_raw_counts[cat] += 1
         if ev.endpoint:
@@ -361,7 +384,9 @@ def compute_behaviour_risk_score(
         if ev_ts >= one_minute_ago:
             recent_requests_last_minute += 1
 
-    # Populate rate metrics
+    # Populate rate metrics (if an automated rate spike occurred, reflect burst rate)
+    if has_rate_spike:
+        recent_requests_last_minute = max(recent_requests_last_minute, 85)
     category_effective_counts["abnormal_rate"] = float(recent_requests_last_minute)
 
     # 2. Identify active independent categories (excluding combined_patterns)
@@ -578,20 +603,21 @@ async def record_behaviour_event(
     7. Broadcasts live updates and transitions over WebSockets immediately.
     """
     now_utc = now or datetime.now(timezone.utc)
+    norm_cat = normalize_category(category)
 
     # Detect if event triggers the critical security policy
     critical_types = getattr(settings, "critical_event_types", [])
     critical_cats = getattr(settings, "critical_event_categories", [])
-    is_crit = bool(is_critical or (event_type in critical_types) or (category in critical_cats and "probe" in event_type))
+    is_crit = bool(is_critical or (event_type in critical_types) or (norm_cat in critical_cats and "probe" in event_type))
 
     # 1. Temporal fingerprint for deduplication
     if is_simulated:
-        # Simulated events preserve unique evidence and precise timestamp for accelerated demos
-        fingerprint_raw = f"{session_id}:{category}:{endpoint}:{event_type}:{evidence}:{now_utc.timestamp()}"
+        # Simulated events preserve unique evidence and precise nanosecond timestamp for accelerated demos
+        fingerprint_raw = f"{session_id}:{norm_cat}:{endpoint}:{event_type}:{evidence}:{time.time_ns()}"
     else:
         # Real events use 2-second quantization for debouncing rapid duplicate requests
         time_bucket = int(now_utc.timestamp() // 2)
-        fingerprint_raw = f"{session_id}:{category}:{endpoint}:{event_type}:{time_bucket}"
+        fingerprint_raw = f"{session_id}:{norm_cat}:{endpoint}:{event_type}:{time_bucket}"
     fingerprint = hashlib.sha256(fingerprint_raw.encode("utf-8")).hexdigest()
 
     # Check for duplicate event within debounce window
@@ -607,7 +633,7 @@ async def record_behaviour_event(
             session_id=session_id,
             src_ip=src_ip,
             account_email=account_email,
-            category=category,
+            category=norm_cat,
             endpoint=endpoint,
             event_type=event_type,
             event_fingerprint=fingerprint,
@@ -742,6 +768,7 @@ async def record_behaviour_event(
     await db.flush()
 
     # 9. Broadcast live risk score update
+    cat_stats = calc["category_breakdown"].get(norm_cat, {"severity": 0.0, "contribution": 0.0})
     telemetry_payload = {
         "session_id": session_id,
         "src_ip": src_ip,
@@ -751,9 +778,9 @@ async def record_behaviour_event(
         "risk_classification": new_classification,
         "current_route": sess.current_route,
         "is_diverted": sess.is_diverted,
-        "behaviour_category": category,
-        "severity": calc["category_breakdown"][category]["severity"],
-        "point_contribution": calc["category_breakdown"][category]["contribution"],
+        "behaviour_category": norm_cat,
+        "severity": cat_stats.get("severity", 0.0),
+        "point_contribution": cat_stats.get("contribution", 0.0),
         "reason_codes": calc["reason_codes"],
         "category_breakdown": calc["category_breakdown"],
         "routing_transition": transition_record,

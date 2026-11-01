@@ -4,9 +4,9 @@ export function resolveBaseUrl() {
     const currentHost = window.location.hostname;
     const protocol = window.location.protocol || 'http:';
 
-    // If accessed locally (localhost / 127.0.0.1), always prefer local backend port 8000
+    // If accessed locally (localhost / 127.0.0.1), prefer IPv4 127.0.0.1 to avoid Windows IPv6 resolution latency
     if (currentHost === 'localhost' || currentHost === '127.0.0.1') {
-      return `${protocol}//localhost:8000`;
+      return `${protocol}//127.0.0.1:8000`;
     }
 
     // If accessing over LAN (e.g. PC2 -> PC1 or mobile device)
@@ -111,11 +111,12 @@ export const api = {
     const proto = typeof window !== 'undefined' && window.location ? window.location.protocol : 'http:';
     const candidateBases = [
       BASE_URL,
+      'http://127.0.0.1:8000',
       `${proto}//${host}:8000`,
       'http://localhost:8000',
-      'http://127.0.0.1:8000',
+      '', // Relative path via Vite dev server proxy
     ];
-    const uniqueBases = Array.from(new Set(candidateBases.filter(Boolean)));
+    const uniqueBases = Array.from(new Set(candidateBases.filter((b) => b !== null && b !== undefined)));
     const endpoints = ['/api/health', '/health', '/api/overview'];
 
     for (const base of uniqueBases) {
