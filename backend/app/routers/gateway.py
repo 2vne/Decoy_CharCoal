@@ -24,6 +24,7 @@ from app.services.behaviour_risk import (
 )
 from app.demo_apps.real_app import router as real_app_router
 from app.demo_apps.decoy_app import router as decoy_app_router
+from app.services.decoy_observation import get_decoy_observation_stats
 
 router = APIRouter(prefix="/gateway", tags=["Deception Gateway & Dynamic Routing"])
 
@@ -270,6 +271,9 @@ async def get_gateway_stats(db: AsyncSession = Depends(get_db)):
     div_sess_res = await db.execute(stmt_sess_div)
     diverted_sessions_count = int(div_sess_res.scalar() or 0)
 
+    # 6. Decoy Observation & Response Latency Statistics
+    decoy_obs = await get_decoy_observation_stats(db)
+
     return {
         "gateway_status": "operational",
         "total_requests": total_requests,
@@ -288,7 +292,14 @@ async def get_gateway_stats(db: AsyncSession = Depends(get_db)):
         },
         "point_allocations": get_configured_allocations(),
         "recent_decisions": recent_logs,
+        "decoy_observation": decoy_obs,
     }
+
+
+@router.get("/decoy_stats")
+async def get_decoy_stats_dedicated(db: AsyncSession = Depends(get_db)):
+    """Dedicated endpoint returning aggregated decoy attacker observation statistics."""
+    return await get_decoy_observation_stats(db)
 
 
 @router.post("/simulate_traffic")

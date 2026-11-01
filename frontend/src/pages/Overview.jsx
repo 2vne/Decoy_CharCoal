@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Users,
@@ -21,7 +21,8 @@ import {
   Tooltip,
 } from 'recharts';
 import { useSoc } from '../context/SocContext';
-import { BASE_URL } from '../api/client';
+import { api, BASE_URL } from '../api/client';
+import { Wrench, CheckCircle2, Sparkles } from 'lucide-react';
 import ThreatUniverse from '../components/ThreatUniverse';
 
 export default function Overview() {
@@ -36,9 +37,18 @@ export default function Overview() {
     metrics,
     runSimulation,
     setSelectedAttackerId,
+    pagerdutyIncidents,
+    pagerdutyStatus,
   } = useSoc();
 
   const [simLoading, setSimLoading] = useState(false);
+  const [advisorySummary, setAdvisorySummary] = useState(null);
+
+  useEffect(() => {
+    api.getAdvisorySummary()
+      .then((data) => setAdvisorySummary(data))
+      .catch((err) => console.warn('Advisory summary load failed:', err.message));
+  }, []);
 
   const handleRunDemo = async () => {
     setSimLoading(true);
@@ -88,6 +98,45 @@ export default function Overview() {
           {simLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 fill-current" />}
           <span>{simLoading ? 'STARTING DEMO...' : 'RUN FULL APT DEMO'}</span>
         </button>
+      </div>
+
+      {/* PagerDuty On-Call Alerting Status Bar */}
+      <div
+        onClick={() => navigate('/incidents')}
+        className="p-3 rounded border border-soc-border bg-soc-card hover:border-red-500/50 cursor-pointer transition flex flex-col sm:flex-row sm:items-center justify-between gap-3 font-mono text-xs shadow-sm"
+      >
+        <div className="flex items-center space-x-3">
+          <div className="p-1.5 rounded bg-red-950/60 border border-red-500/40 text-red-400">
+            <Radio className="h-4 w-4 animate-pulse" />
+          </div>
+          <div>
+            <div className="flex items-center space-x-2">
+              <span className="font-bold text-white tracking-wide">PAGERDUTY ON-CALL:</span>
+              <span className="text-emerald-400 font-bold uppercase">{pagerdutyStatus?.service_mode === 'operational' ? 'LIVE' : 'ACTIVE SIMULATED'}</span>
+              <span className="text-soc-muted">&bull;</span>
+              <span className="text-gray-300">Target: +91 {pagerdutyStatus?.responder_phone || '9372185727'}</span>
+            </div>
+            <div className="text-[10px] text-soc-muted mt-0.5">
+              Email: {pagerdutyStatus?.responder_email || 'danishsjain@gmail.com'} &bull; Session Deduplication: Active
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center space-x-2">
+          {pagerdutyIncidents?.filter((i) => i.priority === 'P1' && i.status !== 'resolved').length > 0 ? (
+            <span className="px-2 py-1 rounded bg-red-950 border border-red-500 text-red-300 font-bold text-[10px] animate-pulse">
+              🚨 {pagerdutyIncidents.filter((i) => i.priority === 'P1' && i.status !== 'resolved').length} P1 CRITICAL
+            </span>
+          ) : (
+            <span className="px-2 py-1 rounded bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 font-bold text-[10px]">
+              ON-CALL HEALTHY
+            </span>
+          )}
+          <span className="text-soc-muted text-[10px] flex items-center space-x-0.5">
+            <span>Open PagerDuty</span>
+            <ChevronRight className="h-3 w-3" />
+          </span>
+        </div>
       </div>
 
       {/* 4 KPI Cards */}
@@ -170,6 +219,43 @@ export default function Overview() {
           </div>
         </div>
       </div>
+
+      {/* Remediation Advisor Overview Card */}
+      {advisorySummary && advisorySummary.top_recurring_fixes?.length > 0 && (
+        <div className="p-4 rounded-lg border border-purple-500/30 bg-purple-950/20 font-mono text-xs space-y-2.5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <div className="p-1 rounded bg-purple-900/60 border border-purple-500/50 text-purple-300">
+                <Wrench className="h-4 w-4" />
+              </div>
+              <span className="font-bold text-white tracking-wide flex items-center gap-1.5">
+                REMEDIATION ADVISOR &bull; TOP FIXES
+                <span className="text-[10px] text-purple-300 bg-purple-950 px-1.5 py-0.5 rounded border border-purple-500/30">
+                  AI suggestion, human review required
+                </span>
+              </span>
+            </div>
+            <button
+              onClick={() => navigate('/incidents')}
+              className="text-[11px] text-purple-300 hover:text-white flex items-center space-x-1"
+            >
+              <span>View All Incident Advisories</span>
+              <ChevronRight className="h-3 w-3" />
+            </button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1">
+            {advisorySummary.top_recurring_fixes.slice(0, 2).map((fix, idx) => (
+              <div key={idx} className="p-2 rounded bg-slate-900/80 border border-slate-800 flex items-start space-x-2">
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 mt-0.5 flex-shrink-0" />
+                <div className="space-y-0.5 min-w-0">
+                  <div className="text-white font-medium truncate">{fix.step}</div>
+                  <div className="text-[10px] text-slate-400 truncate">{fix.why}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Threat Universe Preview Banner */}
       <div className="space-y-2">

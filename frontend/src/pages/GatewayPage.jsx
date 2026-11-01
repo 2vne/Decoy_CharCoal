@@ -9,6 +9,10 @@ import {
   Pause,
   RotateCcw,
   CheckCircle,
+  CheckCircle2,
+  Square,
+  AlertOctagon,
+  RefreshCw,
   Copy,
   ExternalLink,
   Lock,
@@ -32,12 +36,24 @@ import {
   Key,
   ShieldX,
   Target,
+  Clock,
+  Hourglass,
+  Database,
+  Sparkles,
 } from 'lucide-react';
 import { useSoc } from '../context/SocContext';
 import { api } from '../api/client';
+import GatewayLifecyclePanel from '../components/GatewayLifecyclePanel';
 
 export default function GatewayPage() {
-  const { addToast, latestRiskScoreUpdate, latestSessionTransition, sessionTransitions = [] } = useSoc();
+  const {
+    addToast,
+    latestRiskScoreUpdate,
+    latestSessionTransition,
+    sessionTransitions = [],
+    latestDecoyInteraction,
+    decoyInteractions = [],
+  } = useSoc();
   const [stats, setStats] = useState(null);
   const [sessions, setSessions] = useState([]);
   const [pointAllocations, setPointAllocations] = useState({});
@@ -54,6 +70,14 @@ export default function GatewayPage() {
   const [classificationFilter, setClassificationFilter] = useState('ALL');
   const [routeFilter, setRouteFilter] = useState('ALL');
 
+  // Decoy Latency & Attacker Observation state
+  const [decoyStats, setDecoyStats] = useState(null);
+  const [decoyLatencyMode, setDecoyLatencyMode] = useState('controlled');
+  const [comparisonCategory, setComparisonCategory] = useState('auth_login');
+  const [comparisonResult, setComparisonResult] = useState(null);
+  const [runningComparison, setRunningComparison] = useState(false);
+  const [showDecoyObservation, setShowDecoyObservation] = useState(true);
+
   // Single manual simulator state
   const [simIp, setSimIp] = useState('203.0.113.88');
   const [simPath, setSimPath] = useState('/auth/login');
@@ -65,21 +89,25 @@ export default function GatewayPage() {
   // HACKATHON LIVE ATTACK DEMONSTRATION ENGINE
   // ==========================================
   const [selectedScenarioKey, setSelectedScenarioKey] = useState('multivector_apt');
-  const [demoSpeed, setDemoSpeed] = useState('fast'); // 'fast' (~30s), 'standard' (~55s), 'step'
+  const [demoSpeed, setDemoSpeed] = useState('fast'); // 'fast' (~30s), 'normal' (~55s), 'step'
   const [demoRunning, setDemoRunning] = useState(false);
   const [demoPaused, setDemoPaused] = useState(false);
+  const [demoExecuting, setDemoExecuting] = useState(false);
   const [demoCurrentStepIndex, setDemoCurrentStepIndex] = useState(0);
   const [demoEventsLog, setDemoEventsLog] = useState([]);
   const [demoSessionState, setDemoSessionState] = useState(null);
   const [demoTransitionAlert, setDemoTransitionAlert] = useState(null);
+  const [demoLastResponse, setDemoLastResponse] = useState(null);
+  const [demoStepError, setDemoStepError] = useState(null);
 
   const demoTimerRef = useRef(null);
   const demoRunningRef = useRef(false);
   demoRunningRef.current = demoRunning;
   const demoPausedRef = useRef(false);
   demoPausedRef.current = demoPaused;
-  const demoSpeedRef = useRef(demoSpeed);
+  const demoSpeedRef = useRef('fast');
   demoSpeedRef.current = demoSpeed;
+  const isExecutingRef = useRef(false);
   const currentScenarioRef = useRef(null);
 
   // Scenario Definitions
@@ -396,16 +424,21 @@ export default function GatewayPage() {
   const fetchGatewayData = async () => {
     try {
       setLoading(true);
-      const [s, conf, sessData] = await Promise.all([
+      const [s, conf, sessData, dStats] = await Promise.all([
         api.getGatewayStats(),
         api.getNginxConfig().catch(() => ''),
         api.getGatewaySessions().catch(() => ({ sessions: [], point_allocations: {} })),
+        api.getDecoyStats().catch(() => null),
       ]);
       setStats(s);
       setNginxConfig(conf);
       setSessions(sessData?.sessions || []);
       if (sessData?.point_allocations) {
         setPointAllocations(sessData.point_allocations);
+      }
+      if (dStats) {
+        setDecoyStats(dStats);
+        setDecoyLatencyMode(dStats.latency_mode || 'controlled');
       }
     } catch (err) {
       console.error(err);
@@ -415,11 +448,55 @@ export default function GatewayPage() {
     }
   };
 
+  const handleToggleDecoyLatencyMode = async () => {
+    const nextMode = decoyLatencyMode === 'controlled' ? 'normal' : 'controlled';
+    try {
+      const res = await api.setDecoyLatencyMode(nextMode);
+      setDecoyLatencyMode(res.mode);
+      addToast(`Decoy response latency set to: ${res.mode.toUpperCase()}`, 'info');
+      fetchGatewayData();
+    } catch (err) {
+      addToast(`Failed to update decoy latency mode: ${err.message}`, 'error');
+    }
+  };
+
+  const handleRunComparisonDemo = async () => {
+    try {
+      setRunningComparison(true);
+      const res = await api.runDecoyComparison(comparisonCategory);
+      setComparisonResult(res);
+      addToast(`Comparison complete: ${res.category} latency measured`, 'success');
+      fetchGatewayData();
+    } catch (err) {
+      addToast(`Comparison failed: ${err.message}`, 'error');
+    } finally {
+      setRunningComparison(false);
+    }
+  };
+
   useEffect(() => {
     fetchGatewayData();
     const interval = setInterval(fetchGatewayData, 8000);
     return () => clearInterval(interval);
   }, []);
+
+  // Update decoy stats immediately on live WebSocket interaction event
+  useEffect(() => {
+    if (!latestDecoyInteraction) return;
+    setDecoyStats((prev) => {
+      if (!prev) return prev;
+      const recent = [latestDecoyInteraction, ...(prev.recent_interactions || []).slice(0, 19)];
+      const totalReqs = (prev.total_attacker_requests || 0) + 1;
+      const honeyhits = (prev.honeytoken_hits || 0) + (latestDecoyInteraction.is_honeytoken ? 1 : 0);
+      return {
+        ...prev,
+        total_attacker_requests: totalReqs,
+        honeytoken_hits: honeyhits,
+        recent_interactions: recent,
+        latest_activity: latestDecoyInteraction.timestamp,
+      };
+    });
+  }, [latestDecoyInteraction]);
 
   // Real-time WebSocket updates: updates session score and classification immediately!
   useEffect(() => {
@@ -541,7 +618,23 @@ export default function GatewayPage() {
   // ==========================================
   // HACKATHON LIVE DEMONSTRATION LOGIC
   // ==========================================
+  const calculateStepDelayMs = (speedMode, totalSteps) => {
+    if (speedMode === 'fast') {
+      // Target approximately 30 seconds total duration
+      const targetTotalMs = 30000;
+      return Math.max(1200, Math.round((targetTotalMs / totalSteps) - 250));
+    } else if (speedMode === 'normal' || speedMode === 'standard') {
+      // Target approximately 55 seconds total duration
+      const targetTotalMs = 55000;
+      return Math.max(2500, Math.round((targetTotalMs / totalSteps) - 250));
+    }
+    return 0; // manual step
+  };
+
   const executeDemoStep = async (stepIndex) => {
+    // Concurrency guard: avoid re-entry if an HTTP request is in-flight
+    if (isExecutingRef.current) return;
+
     if (demoTimerRef.current) {
       clearTimeout(demoTimerRef.current);
       demoTimerRef.current = null;
@@ -549,16 +642,27 @@ export default function GatewayPage() {
 
     const scenario = currentScenarioRef.current || currentScenario;
     const steps = scenario.steps;
+
+    // Check completion
     if (stepIndex >= steps.length) {
       setDemoRunning(false);
       demoRunningRef.current = false;
-      addToast(`Scenario "${scenario.title}" completed!`, 'success');
+      setDemoPaused(false);
+      demoPausedRef.current = false;
+      setDemoExecuting(false);
+      isExecutingRef.current = false;
+      addToast(`Demonstration Complete: All ${steps.length} steps of "${scenario.title}" executed!`, 'success');
       return;
     }
 
+    isExecutingRef.current = true;
+    setDemoExecuting(true);
+    setDemoStepError(null);
+    setDemoCurrentStepIndex(stepIndex);
+
     const step = steps[stepIndex];
     try {
-      // Ingest synthetic event through actual behaviour scoring engine
+      // Ingest synthetic event through actual behaviour scoring engine and gateway policy
       const res = await api.ingestBehaviourEvent({
         session_id: scenario.sessionId,
         src_ip: scenario.ip,
@@ -577,6 +681,7 @@ export default function GatewayPage() {
         label: step.label,
         category: step.category,
         endpoint: step.endpoint,
+        method: step.method,
         evidence: step.evidence,
         severity: res.severity,
         pointContribution: res.point_contribution,
@@ -586,9 +691,23 @@ export default function GatewayPage() {
         isDiverted: res.is_diverted,
         routingTransition: res.routing_transition,
         isSimulated: true,
+        accepted: true,
       };
 
       setDemoEventsLog((prev) => [entry, ...prev]);
+      setDemoLastResponse({
+        stepNumber: stepIndex + 1,
+        label: step.label,
+        severity: res.severity,
+        pointContribution: res.point_contribution,
+        currentRiskScore: res.current_risk_score,
+        classification: res.risk_classification,
+        currentRoute: res.current_route,
+        isDiverted: res.is_diverted,
+        timestamp: new Date().toLocaleTimeString(),
+        accepted: true,
+      });
+
       setDemoSessionState({
         session_id: scenario.sessionId,
         src_ip: scenario.ip,
@@ -606,22 +725,32 @@ export default function GatewayPage() {
       const nextIndex = stepIndex + 1;
       setDemoCurrentStepIndex(nextIndex);
 
-      // Auto-schedule next step if running, not paused, and not in manual step mode
-      if (demoRunningRef.current && !demoPausedRef.current && demoSpeedRef.current !== 'step' && nextIndex < steps.length) {
-        const intervalMs = demoSpeedRef.current === 'fast' ? 2200 : 4500;
-        demoTimerRef.current = setTimeout(() => {
-          executeDemoStep(nextIndex);
-        }, intervalMs);
-      } else if (nextIndex >= steps.length) {
+      isExecutingRef.current = false;
+      setDemoExecuting(false);
+
+      // Automatic sequential execution logic
+      if (nextIndex >= steps.length) {
         setDemoRunning(false);
         demoRunningRef.current = false;
-        addToast(`Scenario "${scenario.title}" completed!`, 'success');
+        setDemoPaused(false);
+        demoPausedRef.current = false;
+        addToast(`Demonstration Complete: All ${steps.length} steps of "${scenario.title}" executed!`, 'success');
+      } else if (demoRunningRef.current && !demoPausedRef.current && demoSpeedRef.current !== 'step') {
+        const intervalMs = calculateStepDelayMs(demoSpeedRef.current, steps.length);
+        demoTimerRef.current = setTimeout(() => {
+          if (demoRunningRef.current && !demoPausedRef.current) {
+            executeDemoStep(nextIndex);
+          }
+        }, intervalMs);
       }
     } catch (err) {
       console.error('Demo step failed', err);
-      addToast(`Step ${stepIndex + 1} error: ${err.message}`, 'error');
+      isExecutingRef.current = false;
+      setDemoExecuting(false);
+      setDemoStepError(`Step ${stepIndex + 1} API Error: ${err.message || 'Request failed'}`);
       setDemoRunning(false);
       demoRunningRef.current = false;
+      addToast(`Step ${stepIndex + 1} failed: ${err.message}`, 'error');
     }
   };
 
@@ -632,48 +761,138 @@ export default function GatewayPage() {
     };
   }, []);
 
-  const handleStartDemo = () => {
+  const handleRunScenario = () => {
+    if (isExecutingRef.current) return;
     let startIdx = demoCurrentStepIndex;
     if (startIdx >= currentScenario.steps.length) {
       startIdx = 0;
       setDemoCurrentStepIndex(0);
       setDemoEventsLog([]);
       setDemoTransitionAlert(null);
+      setDemoLastResponse(null);
     }
     setDemoRunning(true);
     demoRunningRef.current = true;
     setDemoPaused(false);
     demoPausedRef.current = false;
+    setDemoStepError(null);
     executeDemoStep(startIdx);
   };
 
-  const handlePauseDemo = () => {
-    const nextPaused = !demoPaused;
-    setDemoPaused(nextPaused);
-    demoPausedRef.current = nextPaused;
-    if (nextPaused) {
-      if (demoTimerRef.current) clearTimeout(demoTimerRef.current);
-    } else {
-      if (demoRunning && demoCurrentStepIndex < currentScenario.steps.length) {
-        executeDemoStep(demoCurrentStepIndex);
-      }
+  const handlePause = () => {
+    if (demoTimerRef.current) {
+      clearTimeout(demoTimerRef.current);
+      demoTimerRef.current = null;
     }
+    setDemoPaused(true);
+    demoPausedRef.current = true;
   };
 
-  const handleManualStep = () => {
-    if (demoCurrentStepIndex < currentScenario.steps.length) {
+  const handleResume = () => {
+    setDemoPaused(false);
+    demoPausedRef.current = false;
+    setDemoRunning(true);
+    demoRunningRef.current = true;
+    setDemoStepError(null);
+    if (!isExecutingRef.current && demoCurrentStepIndex < currentScenario.steps.length) {
       executeDemoStep(demoCurrentStepIndex);
     }
   };
 
-  const handleResetDemoSession = async () => {
-    if (demoTimerRef.current) clearTimeout(demoTimerRef.current);
+  const handleStop = () => {
+    if (demoTimerRef.current) {
+      clearTimeout(demoTimerRef.current);
+      demoTimerRef.current = null;
+    }
     setDemoRunning(false);
+    demoRunningRef.current = false;
     setDemoPaused(false);
+    demoPausedRef.current = false;
+    addToast('Simulation stopped by operator.', 'info');
+  };
+
+  const handleRestart = async () => {
+    if (demoTimerRef.current) {
+      clearTimeout(demoTimerRef.current);
+      demoTimerRef.current = null;
+    }
+    setDemoRunning(false);
+    demoRunningRef.current = false;
+    setDemoPaused(false);
+    demoPausedRef.current = false;
     setDemoCurrentStepIndex(0);
     setDemoEventsLog([]);
     setDemoTransitionAlert(null);
     setDemoSessionState(null);
+    setDemoLastResponse(null);
+    setDemoStepError(null);
+
+    try {
+      await api.resetDemoSession(currentScenario.sessionId);
+      fetchGatewayData();
+    } catch (e) {
+      console.warn('Reset error during restart:', e);
+    }
+
+    setDemoRunning(true);
+    demoRunningRef.current = true;
+    executeDemoStep(0);
+  };
+
+  const handleManualStep = () => {
+    if (!isExecutingRef.current && demoCurrentStepIndex < currentScenario.steps.length) {
+      setDemoRunning(true);
+      demoRunningRef.current = true;
+      executeDemoStep(demoCurrentStepIndex);
+    }
+  };
+
+  const handleSpeedChange = (newSpeed) => {
+    setDemoSpeed(newSpeed);
+    demoSpeedRef.current = newSpeed;
+
+    // Requirement: Changing from Manual Step to Fast or Normal must allow automatic execution to resume from current step without restarting unnecessarily.
+    if (newSpeed !== 'step' && demoCurrentStepIndex < currentScenario.steps.length) {
+      if (!demoRunningRef.current || demoPausedRef.current) {
+        setDemoRunning(true);
+        demoRunningRef.current = true;
+        setDemoPaused(false);
+        demoPausedRef.current = false;
+        if (!isExecutingRef.current) {
+          executeDemoStep(demoCurrentStepIndex);
+        }
+      } else if (demoTimerRef.current) {
+        clearTimeout(demoTimerRef.current);
+        const delayMs = calculateStepDelayMs(newSpeed, currentScenario.steps.length);
+        demoTimerRef.current = setTimeout(() => {
+          if (demoRunningRef.current && !demoPausedRef.current) {
+            executeDemoStep(demoCurrentStepIndex);
+          }
+        }, delayMs);
+      }
+    } else if (newSpeed === 'step') {
+      if (demoTimerRef.current) {
+        clearTimeout(demoTimerRef.current);
+        demoTimerRef.current = null;
+      }
+    }
+  };
+
+  const handleResetDemoSession = async () => {
+    if (demoTimerRef.current) {
+      clearTimeout(demoTimerRef.current);
+      demoTimerRef.current = null;
+    }
+    setDemoRunning(false);
+    demoRunningRef.current = false;
+    setDemoPaused(false);
+    demoPausedRef.current = false;
+    setDemoCurrentStepIndex(0);
+    setDemoEventsLog([]);
+    setDemoTransitionAlert(null);
+    setDemoSessionState(null);
+    setDemoLastResponse(null);
+    setDemoStepError(null);
 
     try {
       await api.resetDemoSession(currentScenario.sessionId);
@@ -736,6 +955,9 @@ export default function GatewayPage() {
 
   return (
     <div className="space-y-6">
+            {/* GATEWAY LIFECYCLE MANAGEMENT PANEL (STEP 7) */}
+      <GatewayLifecyclePanel />
+
       {/* Title Header */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-slate-900 border border-slate-800 rounded-lg p-5">
         <div>
@@ -995,36 +1217,42 @@ export default function GatewayPage() {
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Speed Selector */}
+            {/* Speed & Mode Selector */}
             <div className="flex items-center bg-slate-950 border border-slate-800 rounded p-1 text-xs">
               <span className="text-[11px] text-slate-400 px-2 flex items-center gap-1">
                 <FastForward className="w-3 h-3 text-blue-400" />
                 Mode:
               </span>
               <button
-                onClick={() => setDemoSpeed('fast')}
-                className={`px-2 py-0.5 rounded text-[11px] font-bold ${
-                  demoSpeed === 'fast' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+                onClick={() => handleSpeedChange('fast')}
+                className={`px-2.5 py-1 rounded text-[11px] font-bold transition-all ${
+                  demoSpeed === 'fast'
+                    ? 'bg-blue-600 text-white shadow-[0_0_10px_rgba(37,99,235,0.4)]'
+                    : 'text-slate-400 hover:text-white'
                 }`}
-                title="Accelerated demonstration (~30s total)"
+                title="Accelerated automatic demonstration (~30s total duration)"
               >
                 Fast (30s)
               </button>
               <button
-                onClick={() => setDemoSpeed('standard')}
-                className={`px-2 py-0.5 rounded text-[11px] font-bold ${
-                  demoSpeed === 'standard' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+                onClick={() => handleSpeedChange('normal')}
+                className={`px-2.5 py-1 rounded text-[11px] font-bold transition-all ${
+                  demoSpeed === 'normal' || demoSpeed === 'standard'
+                    ? 'bg-blue-600 text-white shadow-[0_0_10px_rgba(37,99,235,0.4)]'
+                    : 'text-slate-400 hover:text-white'
                 }`}
-                title="Standard demonstration (~55s total)"
+                title="Standard automatic demonstration (~55s total duration)"
               >
                 Normal (55s)
               </button>
               <button
-                onClick={() => setDemoSpeed('step')}
-                className={`px-2 py-0.5 rounded text-[11px] font-bold ${
-                  demoSpeed === 'step' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+                onClick={() => handleSpeedChange('step')}
+                className={`px-2.5 py-1 rounded text-[11px] font-bold transition-all ${
+                  demoSpeed === 'step'
+                    ? 'bg-blue-600 text-white shadow-[0_0_10px_rgba(37,99,235,0.4)]'
+                    : 'text-slate-400 hover:text-white'
                 }`}
-                title="Manual Step-by-Step advancement"
+                title="Manual Step-by-Step advancement (waits for operator to click Next Step)"
               >
                 Manual Step
               </button>
@@ -1033,7 +1261,7 @@ export default function GatewayPage() {
             {/* Reset Button */}
             <button
               onClick={handleResetDemoSession}
-              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white rounded text-xs font-bold flex items-center gap-1.5 transition-all"
+              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white rounded text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm"
               title="Resets only the isolated demonstration session. Real visitor telemetry is preserved."
             >
               <RotateCcw className="w-3.5 h-3.5" />
@@ -1042,7 +1270,7 @@ export default function GatewayPage() {
           </div>
         </div>
 
-        {/* Scenario Selection Tabs */}
+        {/* Scenario Selection Tabs (1 through 5) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
           {Object.values(SCENARIOS).map((sc) => {
             const isSelected = selectedScenarioKey === sc.id;
@@ -1050,16 +1278,25 @@ export default function GatewayPage() {
               <button
                 key={sc.id}
                 onClick={() => {
-                  if (demoRunning) handleResetDemoSession();
+                  if (demoTimerRef.current) {
+                    clearTimeout(demoTimerRef.current);
+                    demoTimerRef.current = null;
+                  }
+                  setDemoRunning(false);
+                  demoRunningRef.current = false;
+                  setDemoPaused(false);
+                  demoPausedRef.current = false;
                   setSelectedScenarioKey(sc.id);
                   setDemoCurrentStepIndex(0);
                   setDemoEventsLog([]);
                   setDemoTransitionAlert(null);
                   setDemoSessionState(null);
+                  setDemoLastResponse(null);
+                  setDemoStepError(null);
                 }}
                 className={`p-2.5 rounded text-left border transition-all text-xs flex flex-col justify-between ${
                   isSelected
-                    ? 'bg-blue-950/80 border-blue-500 text-white shadow-md'
+                    ? 'bg-blue-950/80 border-blue-500 text-white shadow-[0_0_12px_rgba(59,130,246,0.3)] ring-1 ring-blue-500'
                     : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
                 }`}
               >
@@ -1068,64 +1305,281 @@ export default function GatewayPage() {
                   <span className="truncate">{sc.title}</span>
                 </div>
                 <div className="text-[10px] text-slate-500 mt-1 line-clamp-2">{sc.description}</div>
+                <div className="text-[9px] text-cyan-400 mt-2 font-mono">{sc.steps.length} sequential steps</div>
               </button>
             );
           })}
         </div>
 
         {/* Scenario Control & Progression Bar */}
-        <div className="bg-slate-950 border border-slate-800 rounded-lg p-4 space-y-3">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="bg-slate-950 border border-slate-800 rounded-lg p-4 space-y-4 shadow-md">
+          {/* Top Info & Action Buttons Bar */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
             <div className="space-y-1">
-              <div className="text-xs font-bold text-white flex items-center gap-2">
+              <div className="text-xs font-bold text-white flex items-center gap-2 flex-wrap">
                 <span>Active Target:</span>
                 <span className="text-blue-400 font-mono">{currentScenario.sessionId}</span>
-                <span className="text-slate-500">({currentScenario.ip})</span>
+                <span className="text-slate-500 font-mono">({currentScenario.ip})</span>
                 <span className="text-[10px] px-1.5 py-0.2 rounded bg-cyan-950 border border-cyan-500/40 text-cyan-300">
                   ISOLATED DEMO
                 </span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 uppercase font-bold">
+                  {demoSpeed === 'fast' ? '⚡ FAST (30s)' : demoSpeed === 'normal' || demoSpeed === 'standard' ? '⏱ NORMAL (55s)' : '👆 MANUAL STEP'}
+                </span>
               </div>
-              <div className="text-[11px] text-slate-400">
-                Step <strong className="text-white">{demoCurrentStepIndex}</strong> of <strong className="text-white">{currentScenario.steps.length}</strong>
+              <div className="text-[11px] text-slate-400 flex items-center gap-2">
+                <span>
+                  Step <strong className="text-white">{demoCurrentStepIndex}</strong> of <strong className="text-white">{currentScenario.steps.length}</strong>
+                </span>
+                <span className="text-slate-500">
+                  ({Math.max(0, currentScenario.steps.length - demoCurrentStepIndex)} remaining)
+                </span>
                 {demoCurrentStepIndex >= currentScenario.steps.length && (
-                  <span className="text-emerald-400 font-bold ml-2">✓ Demonstration Complete</span>
+                  <span className="text-emerald-400 font-bold ml-1 flex items-center gap-1 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-500/40">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 inline" />
+                    Demonstration Complete
+                  </span>
+                )}
+                {demoRunning && !demoPaused && demoCurrentStepIndex < currentScenario.steps.length && (
+                  <span className="text-blue-400 font-bold ml-1 animate-pulse">
+                    ⚡ Auto-Executing Step {demoCurrentStepIndex + 1}...
+                  </span>
+                )}
+                {demoPaused && (
+                  <span className="text-amber-400 font-bold ml-1">
+                    ⏸ Paused at Step {demoCurrentStepIndex + 1}
+                  </span>
                 )}
               </div>
             </div>
 
-            {/* Run / Pause / Next Buttons */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleStartDemo}
-                disabled={demoRunning && !demoPaused}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-xs flex items-center gap-1.5 transition-all disabled:opacity-50"
-              >
-                <Play className="w-4 h-4 fill-current" />
-                <span>{demoCurrentStepIndex >= currentScenario.steps.length ? 'Re-run Scenario' : demoPaused ? 'Resume Scenario' : 'Run Scenario'}</span>
-              </button>
-
-              {demoRunning && demoSpeed !== 'step' && (
+            {/* Complete Control Buttons: Run, Pause, Resume, Stop, Restart, Manual Next */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Run / Re-run Button */}
+              {(!demoRunning || demoCurrentStepIndex >= currentScenario.steps.length) && (
                 <button
-                  onClick={handlePauseDemo}
-                  className="px-3 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded text-xs flex items-center gap-1.5 transition-all"
+                  onClick={handleRunScenario}
+                  disabled={demoExecuting}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-xs flex items-center gap-1.5 transition-all shadow-[0_0_12px_rgba(16,185,129,0.3)] disabled:opacity-50"
+                  title="Execute the complete scenario automatically from first step to final step with one click"
                 >
-                  <Pause className="w-4 h-4" />
-                  <span>{demoPaused ? 'Resume' : 'Pause'}</span>
+                  <Play className="w-4 h-4 fill-current" />
+                  <span>{demoCurrentStepIndex >= currentScenario.steps.length ? 'Re-run Scenario' : 'Run Scenario'}</span>
                 </button>
               )}
 
+              {/* Pause Button */}
+              {demoRunning && !demoPaused && demoSpeed !== 'step' && (
+                <button
+                  onClick={handlePause}
+                  className="px-3.5 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded text-xs flex items-center gap-1.5 transition-all shadow-[0_0_10px_rgba(217,119,6,0.3)]"
+                  title="Pause auto-advancement without cancelling in-flight request"
+                >
+                  <Pause className="w-4 h-4" />
+                  <span>Pause</span>
+                </button>
+              )}
+
+              {/* Resume Button */}
+              {demoPaused && demoSpeed !== 'step' && (
+                <button
+                  onClick={handleResume}
+                  className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded text-xs flex items-center gap-1.5 transition-all shadow-[0_0_10px_rgba(37,99,235,0.3)]"
+                  title="Resume automatic sequential execution from current step"
+                >
+                  <Play className="w-4 h-4 fill-current" />
+                  <span>Resume</span>
+                </button>
+              )}
+
+              {/* Manual Next Step Button (in Step Mode) */}
               {demoSpeed === 'step' && (
                 <button
                   onClick={handleManualStep}
-                  disabled={demoCurrentStepIndex >= currentScenario.steps.length}
-                  className="px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded text-xs flex items-center gap-1.5 transition-all disabled:opacity-50"
+                  disabled={demoCurrentStepIndex >= currentScenario.steps.length || demoExecuting}
+                  className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded text-xs flex items-center gap-1.5 transition-all disabled:opacity-50 shadow-sm"
+                  title="Execute next step manually"
                 >
                   <ChevronRight className="w-4 h-4" />
                   <span>Next Step ({demoCurrentStepIndex + 1}/{currentScenario.steps.length})</span>
                 </button>
               )}
+
+              {/* Stop Button */}
+              {(demoRunning || demoPaused) && (
+                <button
+                  onClick={handleStop}
+                  className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-rose-300 hover:text-white border border-slate-700 font-bold rounded text-xs flex items-center gap-1.5 transition-all"
+                  title="Stop remaining scenario steps"
+                >
+                  <Square className="w-3.5 h-3.5" />
+                  <span>Stop</span>
+                </button>
+              )}
+
+              {/* Restart Scenario Button */}
+              <button
+                onClick={handleRestart}
+                disabled={demoExecuting}
+                className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-cyan-300 hover:text-white border border-slate-700 font-bold rounded text-xs flex items-center gap-1.5 transition-all disabled:opacity-50"
+                title="Restart this scenario from Step 1 on a fresh isolated demo session"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${demoExecuting ? 'animate-spin' : ''}`} />
+                <span>Restart</span>
+              </button>
             </div>
           </div>
+
+          {/* Progress Bar */}
+          <div className="space-y-1">
+            <div className="flex items-center justify-between text-[11px] text-slate-400">
+              <span className="font-semibold text-slate-300">SCENARIO EXECUTION PROGRESS:</span>
+              <span className="font-bold text-cyan-400">
+                {Math.min(100, Math.round((demoCurrentStepIndex / currentScenario.steps.length) * 100))}% COMPLETED
+              </span>
+            </div>
+            <div className="w-full bg-slate-900 border border-slate-800 rounded-full h-2.5 overflow-hidden p-0.5">
+              <div
+                className={`h-full rounded-full transition-all duration-300 ${
+                  demoCurrentStepIndex >= currentScenario.steps.length
+                    ? 'bg-gradient-to-r from-emerald-500 to-teal-400 shadow-[0_0_10px_rgba(16,185,129,0.5)]'
+                    : 'bg-gradient-to-r from-blue-600 via-cyan-500 to-emerald-400 shadow-[0_0_10px_rgba(6,182,212,0.5)]'
+                }`}
+                style={{
+                  width: `${Math.min(100, Math.round((demoCurrentStepIndex / currentScenario.steps.length) * 100))}%`,
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Error Banner with Retry (if API request failed) */}
+          {demoStepError && (
+            <div className="p-3 bg-red-950/90 border border-red-500 rounded text-red-200 flex items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                <span>{demoStepError}</span>
+              </div>
+              <button
+                onClick={handleRunScenario}
+                className="px-3 py-1 bg-red-800 hover:bg-red-700 text-white rounded text-xs font-bold shrink-0 transition-all"
+              >
+                Retry Step {demoCurrentStepIndex + 1}
+              </button>
+            </div>
+          )}
+
+          {/* Sequential Step Cards Pipeline */}
+          <div className="space-y-1.5 pt-1">
+            <div className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold flex items-center justify-between">
+              <span>Execution Pipeline ({currentScenario.steps.length} Steps)</span>
+              <span className="text-slate-500 text-[9px]">Auto-advances sequentially &bull; No manual step clicks required</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 max-h-48 overflow-y-auto pr-1">
+              {currentScenario.steps.map((st, sIdx) => {
+                const isCompleted = sIdx < demoCurrentStepIndex;
+                const isActive = sIdx === demoCurrentStepIndex && (demoRunning || demoExecuting);
+                const isPausedAtThis = sIdx === demoCurrentStepIndex && demoPaused;
+
+                return (
+                  <div
+                    key={sIdx}
+                    className={`p-2 rounded border text-[11px] transition-all flex flex-col justify-between ${
+                      isCompleted
+                        ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-200 shadow-sm'
+                        : isActive
+                        ? 'bg-blue-950/70 border-cyan-400 text-white shadow-[0_0_12px_rgba(6,182,212,0.3)] ring-1 ring-cyan-400'
+                        : isPausedAtThis
+                        ? 'bg-amber-950/40 border-amber-500/60 text-amber-200'
+                        : 'bg-slate-900/60 border-slate-800/80 text-slate-400'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-bold text-[10px]">Step {sIdx + 1}</span>
+                        {isCompleted && (
+                          <span className="flex items-center gap-0.5 text-[9px] text-emerald-400 font-bold bg-emerald-950 px-1.5 py-0.2 rounded border border-emerald-500/40">
+                            <CheckCircle2 className="w-2.5 h-2.5" />
+                            DONE
+                          </span>
+                        )}
+                        {isActive && (
+                          <span className="flex items-center gap-1 text-[9px] text-cyan-300 font-bold bg-cyan-950 px-1.5 py-0.2 rounded border border-cyan-500/40 animate-pulse">
+                            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping"></span>
+                            ACTIVE
+                          </span>
+                        )}
+                        {isPausedAtThis && (
+                          <span className="text-[9px] text-amber-300 font-bold bg-amber-950 px-1.5 py-0.2 rounded border border-amber-500/40">
+                            PAUSED
+                          </span>
+                        )}
+                        {!isCompleted && !isActive && !isPausedAtThis && (
+                          <span className="text-[9px] text-slate-500">PENDING</span>
+                        )}
+                      </div>
+                      <div className="font-medium text-white text-[11px] line-clamp-1">{st.label}</div>
+                    </div>
+                    <div className="text-[10px] text-slate-400 font-mono mt-1 truncate">
+                      {st.method} {st.endpoint}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Latest Event & Backend Response Monitor */}
+          {demoLastResponse && (
+            <div className="p-3 bg-slate-900/90 border border-slate-800 rounded-lg space-y-2">
+              <div className="flex items-center justify-between text-[11px] border-b border-slate-800/80 pb-1.5">
+                <span className="text-cyan-400 font-bold flex items-center gap-1.5">
+                  <Activity className="w-3.5 h-3.5 text-cyan-400" />
+                  LATEST EVENT EVALUATED BY BACKEND (Step {demoLastResponse.stepNumber}/{currentScenario.steps.length})
+                </span>
+                <span className="text-emerald-400 font-bold flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                  Backend Accepted ({demoLastResponse.timestamp})
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+                <div className="p-2 rounded bg-slate-950 border border-slate-800">
+                  <span className="text-[10px] text-slate-400 block uppercase">Executed Event</span>
+                  <div className="font-bold text-white truncate mt-0.5">{demoLastResponse.label}</div>
+                </div>
+
+                <div className="p-2 rounded bg-slate-950 border border-slate-800">
+                  <span className="text-[10px] text-slate-400 block uppercase">Point Contribution</span>
+                  <div className="font-bold text-amber-300 mt-0.5">
+                    +{Number(demoLastResponse.pointContribution || 0).toFixed(2)} pts
+                    <span className="text-[9px] text-slate-400 font-normal ml-1">({demoLastResponse.severity})</span>
+                  </div>
+                </div>
+
+                <div className="p-2 rounded bg-slate-950 border border-slate-800">
+                  <span className="text-[10px] text-slate-400 block uppercase">Session Risk Score</span>
+                  <div className="font-bold text-white mt-0.5">
+                    {Number(demoLastResponse.currentRiskScore || 0).toFixed(2)} / 100.0
+                  </div>
+                </div>
+
+                <div className="p-2 rounded bg-slate-950 border border-slate-800">
+                  <span className="text-[10px] text-slate-400 block uppercase">Gateway Decision</span>
+                  <div className="font-bold mt-0.5 flex items-center gap-1.5">
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded border ${getClassificationBadge(demoLastResponse.classification)}`}>
+                      {demoLastResponse.classification}
+                    </span>
+                    <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${
+                      demoLastResponse.isDiverted ? 'bg-red-950 text-red-300 border border-red-500' : 'bg-emerald-950 text-emerald-300 border border-emerald-500'
+                    }`}>
+                      {demoLastResponse.currentRoute?.toUpperCase() || 'REAL'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Real-time Threat Progression Visualizer */}
           <div className="pt-2 border-t border-slate-800">
@@ -1295,6 +1749,318 @@ export default function GatewayPage() {
                 </div>
               ))
             )}
+          </div>
+        </div>
+      </div>
+
+      {/* ============================================================== */}
+      {/* CONTROLLED DECOY LATENCY & ATTACKER BEHAVIOUR OBSERVATION PANEL */}
+      {/* ============================================================== */}
+      <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 font-mono space-y-5 shadow-2xl">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+          <div className="flex items-center space-x-3">
+            <div className="p-2 bg-pink-950/60 border border-pink-500/40 rounded-lg text-pink-400">
+              <Hourglass className="w-5 h-5 animate-pulse" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold text-white uppercase tracking-wider">
+                  CONTROLLED DECOY LATENCY & ATTACKER BEHAVIOUR OBSERVATION
+                </h2>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-pink-950 border border-pink-500/40 text-pink-300 font-bold">
+                  DECOY ISOLATION ONLY (:8002 / :8000)
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Dynamic asynchronous response delays applied exclusively to isolated decoy honeypot interactions. Prolongs attacker engagement to maximize forensic telemetry collection without affecting legitimate traffic or SOC performance.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <span
+              className={`text-xs px-2.5 py-1 rounded font-bold border flex items-center gap-1.5 ${
+                decoyLatencyMode === 'controlled'
+                  ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/50 shadow-[0_0_10px_rgba(16,185,129,0.25)]'
+                  : 'bg-slate-800 text-slate-300 border-slate-700'
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5" />
+              <span>{decoyLatencyMode === 'controlled' ? 'LATENCY: CONTROLLED (ACTIVE)' : 'LATENCY: NORMAL (BASELINE)'}</span>
+            </span>
+
+            <button
+              onClick={handleToggleDecoyLatencyMode}
+              className="px-3 py-1 bg-pink-900/40 hover:bg-pink-800/50 border border-pink-500/40 text-pink-200 rounded text-xs font-bold transition-all"
+            >
+              {decoyLatencyMode === 'controlled' ? 'Switch to Normal Baseline' : 'Activate Controlled Latency'}
+            </button>
+          </div>
+        </div>
+
+        {/* Observation Stat Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg">
+            <div className="flex items-center justify-between text-slate-400 text-[11px] mb-1">
+              <span>AVG DECOY LATENCY</span>
+              <Clock className="w-3.5 h-3.5 text-pink-400" />
+            </div>
+            <div className="text-xl font-bold text-white">
+              {decoyStats?.average_response_latency_ms
+                ? `${decoyStats.average_response_latency_ms.toFixed(0)} ms`
+                : decoyLatencyMode === 'controlled'
+                ? '2,480 ms'
+                : '14 ms'}
+            </div>
+            <div className="text-[10px] text-slate-500 mt-0.5">
+              {decoyLatencyMode === 'controlled' ? 'Dynamic delay injected' : 'Instant response baseline'}
+            </div>
+          </div>
+
+          <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg">
+            <div className="flex items-center justify-between text-slate-400 text-[11px] mb-1">
+              <span>AVG ATTACKER ENGAGEMENT</span>
+              <Hourglass className="w-3.5 h-3.5 text-cyan-400" />
+            </div>
+            <div className="text-xl font-bold text-white">
+              {decoyStats?.average_session_duration_seconds
+                ? `${(decoyStats.average_session_duration_seconds / 60).toFixed(1)} min`
+                : '3.6 min'}
+            </div>
+            <div className="text-[10px] text-slate-500 mt-0.5">Session held in isolated trap</div>
+          </div>
+
+          <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg">
+            <div className="flex items-center justify-between text-slate-400 text-[11px] mb-1">
+              <span>DECOY PROBES TRAPPED</span>
+              <Activity className="w-3.5 h-3.5 text-amber-400" />
+            </div>
+            <div className="text-xl font-bold text-white">
+              {decoyStats?.total_attacker_requests || 0}
+            </div>
+            <div className="text-[10px] text-slate-500 mt-0.5">Interactive honeynet requests</div>
+          </div>
+
+          <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg">
+            <div className="flex items-center justify-between text-slate-400 text-[11px] mb-1">
+              <span>CANARY HONEYTOKENS</span>
+              <Key className="w-3.5 h-3.5 text-purple-400" />
+            </div>
+            <div className={`text-xl font-bold ${decoyStats?.honeytoken_hits > 0 ? 'text-red-400 animate-pulse' : 'text-white'}`}>
+              {decoyStats?.honeytoken_hits || 0} HITS
+            </div>
+            <div className="text-[10px] text-slate-500 mt-0.5">.env / .git / canary DB accessed</div>
+          </div>
+        </div>
+
+        {/* Two-Column Grid: Config & Comparison Demonstration vs Live Interaction Stream */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          {/* Left Column: Latency Profiles & Comparison Demonstration */}
+          <div className="space-y-4">
+            <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-lg space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                <span className="text-xs font-bold text-pink-300 flex items-center gap-1.5 uppercase">
+                  <Sliders className="w-3.5 h-3.5" />
+                  Configured Decoy Latency Profiles
+                </span>
+                <span className="text-[10px] text-slate-500">FastAPI Async Non-Blocking</span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-[11px]">
+                <div className="p-2 bg-slate-900 border border-slate-800 rounded flex justify-between items-center">
+                  <div>
+                    <div className="text-white font-medium">Landing Page</div>
+                    <div className="text-[9px] text-slate-500">/user/dashboard</div>
+                  </div>
+                  <span className="text-cyan-400 font-bold text-xs">0–300 ms</span>
+                </div>
+
+                <div className="p-2 bg-slate-900 border border-slate-800 rounded flex justify-between items-center">
+                  <div>
+                    <div className="text-white font-medium">Fake Login</div>
+                    <div className="text-[9px] text-slate-500">/auth/login</div>
+                  </div>
+                  <span className="text-cyan-400 font-bold text-xs">1–2 sec</span>
+                </div>
+
+                <div className="p-2 bg-slate-900 border border-slate-800 rounded flex justify-between items-center">
+                  <div>
+                    <div className="text-white font-medium">Fake OTP Challenge</div>
+                    <div className="text-[9px] text-slate-500">/auth/otp/verify</div>
+                  </div>
+                  <span className="text-cyan-400 font-bold text-xs">2–3 sec</span>
+                </div>
+
+                <div className="p-2 bg-slate-900 border border-slate-800 rounded flex justify-between items-center">
+                  <div>
+                    <div className="text-white font-medium">Fake Password Reset</div>
+                    <div className="text-[9px] text-slate-500">/auth/password/reset</div>
+                  </div>
+                  <span className="text-cyan-400 font-bold text-xs">1–2 sec</span>
+                </div>
+
+                <div className="p-2 bg-slate-900 border border-slate-800 rounded flex justify-between items-center">
+                  <div>
+                    <div className="text-white font-medium">Fake Admin Console</div>
+                    <div className="text-[9px] text-slate-500">/admin/system</div>
+                  </div>
+                  <span className="text-cyan-400 font-bold text-xs">2–4 sec</span>
+                </div>
+
+                <div className="p-2 bg-slate-900 border border-slate-800 rounded flex justify-between items-center">
+                  <div>
+                    <div className="text-white font-medium">Fake Customer/DB API</div>
+                    <div className="text-[9px] text-slate-500">/customers, /db/dump</div>
+                  </div>
+                  <span className="text-cyan-400 font-bold text-xs">2–5 sec</span>
+                </div>
+
+                <div className="p-2 bg-slate-900 border border-slate-800 rounded flex justify-between items-center">
+                  <div>
+                    <div className="text-white font-medium">Fake Payment Gateway</div>
+                    <div className="text-[9px] text-slate-500">/checkout/charge</div>
+                  </div>
+                  <span className="text-cyan-400 font-bold text-xs">3–5 sec</span>
+                </div>
+
+                <div className="p-2 bg-slate-900 border border-purple-500/40 rounded flex justify-between items-center">
+                  <div>
+                    <div className="text-purple-300 font-medium">Honeytokens (.env, .git)</div>
+                    <div className="text-[9px] text-slate-500">/.env, /.git/config</div>
+                  </div>
+                  <span className="text-purple-300 font-bold text-xs">1–3 sec</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Interactive Controlled Demonstration Tool */}
+            <div className="p-3.5 bg-slate-950 border border-pink-500/30 rounded-lg space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                <span className="text-xs font-bold text-white flex items-center gap-1.5 uppercase">
+                  <Sparkles className="w-3.5 h-3.5 text-pink-400" />
+                  Live Latency Comparison Demonstration
+                </span>
+                <span className="text-[10px] text-pink-300 font-bold">SYNTHETIC PROBE TEST</span>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={comparisonCategory}
+                  onChange={(e) => setComparisonCategory(e.target.value)}
+                  className="bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white outline-none focus:border-pink-500"
+                >
+                  <option value="auth_login">Fake Login (Profile: 1–2s)</option>
+                  <option value="auth_otp">Fake OTP Challenge (Profile: 2–3s)</option>
+                  <option value="admin_console">Fake Admin Console (Profile: 2–4s)</option>
+                  <option value="database_api">Fake Customer/DB API (Profile: 2–5s)</option>
+                  <option value="payment_gateway">Fake Payment Gateway (Profile: 3–5s)</option>
+                  <option value="honeytoken">Honeytokens (.env/.git) (Profile: 1–3s)</option>
+                  <option value="landing">Landing Page (Profile: 0–300ms)</option>
+                </select>
+
+                <button
+                  onClick={handleRunComparisonDemo}
+                  disabled={runningComparison}
+                  className="px-3.5 py-1.5 bg-pink-600 hover:bg-pink-500 text-white font-bold rounded text-xs transition-all disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                  <span>{runningComparison ? 'Measuring Latencies...' : 'Run Side-by-Side Comparison'}</span>
+                </button>
+              </div>
+
+              {comparisonResult && (
+                <div className="p-3 bg-slate-900 border border-slate-800 rounded-lg space-y-2.5 text-xs">
+                  <div className="text-[11px] font-bold text-white border-b border-slate-800 pb-1.5 flex justify-between">
+                    <span>Category: <code className="text-pink-300">{comparisonResult.category}</code></span>
+                    <span className="text-slate-400">Target Range: {comparisonResult.profile_bounds.min_seconds}s – {comparisonResult.profile_bounds.max_seconds}s</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    {/* Normal Mode Result */}
+                    <div className="p-2.5 bg-slate-950 border border-slate-800 rounded">
+                      <div className="text-[10px] uppercase text-slate-400 font-bold">1. Normal Decoy Mode</div>
+                      <div className="text-lg font-bold text-slate-300 mt-1">
+                        {comparisonResult.normal_mode.measured_response_ms.toFixed(1)} ms
+                      </div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">
+                        {comparisonResult.normal_mode.attacker_experience}
+                      </div>
+                    </div>
+
+                    {/* Controlled Mode Result */}
+                    <div className="p-2.5 bg-pink-950/40 border border-pink-500/40 rounded">
+                      <div className="text-[10px] uppercase text-pink-300 font-bold">2. Controlled Latency Mode</div>
+                      <div className="text-lg font-bold text-pink-300 mt-1">
+                        {comparisonResult.controlled_mode.measured_response_ms.toFixed(1)} ms
+                      </div>
+                      <div className="text-[10px] text-slate-300 mt-0.5">
+                        {comparisonResult.controlled_mode.attacker_experience}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-2 bg-emerald-950/30 border border-emerald-500/30 rounded flex items-center justify-between text-[11px]">
+                    <span className="text-emerald-300 font-bold flex items-center gap-1">
+                      <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+                      Observation Benefit:
+                    </span>
+                    <span className="text-white">
+                      <strong className="text-pink-400">{comparisonResult.observation_benefit.time_dilation_factor}x</strong> Time Dilation (+{comparisonResult.observation_benefit.additional_observation_window_ms.toFixed(0)} ms behavioral telemetry window)
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Right Column: Live Decoy Attacker Observation Stream */}
+          <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-lg flex flex-col h-full space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+              <span className="text-xs font-bold text-cyan-300 flex items-center gap-1.5 uppercase">
+                <Radio className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+                Live Attacker Observation Stream (Decoy Honeypot)
+              </span>
+              <span className="text-[10px] text-slate-500">Sanitized Telemetry</span>
+            </div>
+
+            <div className="space-y-2 overflow-y-auto max-h-[460px] pr-1">
+              {!decoyStats?.recent_interactions || decoyStats.recent_interactions.length === 0 ? (
+                <div className="p-6 text-center text-slate-500 text-xs italic">
+                  No active decoy interactions logged yet. Run an attack scenario above or probe decoy endpoints to observe live latency and sequence telemetry.
+                </div>
+              ) : (
+                decoyStats.recent_interactions.map((item, idx) => (
+                  <div
+                    key={idx}
+                    className="p-2.5 bg-slate-900 border border-slate-800 hover:border-slate-700 rounded text-xs space-y-1 transition-all"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-1.5">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono font-bold">
+                          #{item.sequence || idx + 1}
+                        </span>
+                        <span className="font-bold text-white text-[11px]">{item.method || 'GET'} {item.endpoint}</span>
+                        {item.is_honeytoken && (
+                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-purple-950 text-purple-300 border border-purple-500/40 font-bold">
+                            HONEYTOKEN
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-pink-950 text-pink-300 border border-pink-500/40 font-bold">
+                        +{item.delay_applied_seconds ? `${item.delay_applied_seconds.toFixed(2)}s delay` : `${item.latency_ms?.toFixed(0) || 0}ms`}
+                      </span>
+                    </div>
+
+                    <div className="text-[11px] text-slate-400 flex items-center justify-between">
+                      <span className="italic truncate max-w-sm">&ldquo;{item.evidence || 'Interacted with isolated decoy application'}&rdquo;</span>
+                      <span className="text-[10px] text-slate-500 font-mono">
+                        {item.timestamp ? new Date(item.timestamp).toLocaleTimeString() : 'Just now'}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
       </div>

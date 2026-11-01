@@ -3,7 +3,11 @@ from datetime import datetime, timezone, timedelta
 import logging
 import re
 from typing import Any, Dict, Optional
+import asyncio
 import httpx
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
@@ -12,7 +16,7 @@ from app.services.audit import record_audit
 
 logger = logging.getLogger(__name__)
 
-SUPPRESSION_WINDOW_SECONDS = 300  # 5 minutes
+SUPPRESSION_WINDOW_SECONDS = 45  # 45 seconds for active attack correlation / demonstration
 
 
 def normalize_phone_e164(phone: str) -> str:
@@ -43,17 +47,78 @@ async def _is_suppressed(db: AsyncSession, attacker_id: int, channel: str) -> bo
     return res.scalar_one_or_none() is not None
 
 
+async def send_smtp_advisory_email(
+    subject: str,
+    summary: str,
+    top_actions: list,
+    incident_id: Optional[int] = None,
+    advisory_url: Optional[str] = None,
+    to_email: Optional[str] = None,
+) -> bool:
+    """
+    Step 6: SMTP Sender with fail-safe mock fallback.
+    Body: short summary + top 3 immediate actions + link to incident advisory.
+    No keys -> logs 'SIMULATED EMAIL'.
+    """
+    recipient = to_email or settings.smtp_to or "danishsjain@gmail.com"
+    link = advisory_url or f"{settings.frontend_origin}/incidents/{incident_id or 1}#advisory"
+
+    actions_text = "\n".join([f"- {a.get('step', a) if isinstance(a, dict) else a}" for a in top_actions[:3]]) or "No immediate actions required."
+
+    body_text = f"""SENTINEL SOC - Remediation Advisory Alert
+
+Summary:
+{summary}
+
+Top Immediate Actions (AI suggestion, human review required):
+{actions_text}
+
+Full Remediation Advisory & Incident Details:
+{link}
+"""
+
+    if not settings.smtp_host or not settings.smtp_user or settings.mock_mode:
+        logger.info(f"SIMULATED EMAIL to {recipient} | Subject: {subject}\n{body_text}")
+        return True
+
+    def _send_sync():
+        try:
+            msg = MIMEMultipart()
+            msg["From"] = settings.smtp_user
+            msg["To"] = recipient
+            msg["Subject"] = subject
+            msg.attach(MIMEText(body_text, "plain"))
+
+            port = 587
+            server = smtplib.SMTP(settings.smtp_host, port, timeout=5.0)
+            server.starttls()
+            if settings.smtp_pass:
+                server.login(settings.smtp_user, settings.smtp_pass)
+            server.sendmail(settings.smtp_user, [recipient], msg.as_string())
+            server.quit()
+            return True
+        except Exception as e:
+            logger.warning(f"SMTP email dispatch failed: {e}")
+            return False
+
+    return await asyncio.to_thread(_send_sync)
+
+
 async def send_telegram_alert(
     token: str,
     chat_id: str,
     text: str,
+    advisory_url: Optional[str] = None,
 ) -> bool:
     if not token or not chat_id:
         return False
+    msg_text = text
+    if advisory_url:
+        msg_text += f"\n\n🔗 [View Remediation Advisory]({advisory_url})"
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = {
         "chat_id": chat_id,
-        "text": text,
+        "text": msg_text,
         "parse_mode": "Markdown",
     }
     try:
@@ -71,18 +136,38 @@ async def send_pagerduty_alert(
     source: str,
     severity: str = "critical",
     custom_details: Optional[Dict[str, Any]] = None,
+    advisory_url: Optional[str] = None,
 ) -> bool:
-    if not routing_key:
-        return False
-    url = "https://events.pagerduty.com/v2/enqueue"
+    link = advisory_url or f"{settings.frontend_origin}/incidents"
     details = {
         "call_target_phone": settings.pagerduty_phone or "9372185727",
         "action_required": "Voice call dispatched to on-call responder",
+        "remediation_advisory_url": link,
         **(custom_details or {}),
     }
+    dedup_key = (custom_details or {}).get("dedup_key") or f"sentinel_alert_{re.sub(r'[^a-zA-Z0-9_]', '_', source)}"
+    
+    try:
+        from app.services.pagerduty import pagerduty_manager
+        await pagerduty_manager.trigger_or_update_incident(
+            dedup_key=dedup_key,
+            summary=summary,
+            severity=severity,
+            source=source,
+            custom_details=details,
+        )
+        return True
+    except Exception as e:
+        logger.warning(f"PagerDuty alert dispatch via manager failed: {e}")
+
+    if not routing_key:
+        return False
+
+    url = "https://events.pagerduty.com/v2/enqueue"
     payload = {
         "routing_key": routing_key,
         "event_action": "trigger",
+        "dedup_key": dedup_key,
         "payload": {
             "summary": summary,
             "source": source,
@@ -166,7 +251,7 @@ async def send_resend_email(
     html: str,
 ) -> bool:
     key = (api_key or settings.resend_api_key or "").strip('"')
-    dest = (to_email or settings.authority_email or "danishsjain@gmail.com").strip('"')
+    dest = (to_email or settings.authority_email or "aryanreddy2006@gmail.com").strip('"')
     if not key or not dest:
         logger.info(f"[Resend Email Simulated] To: {dest}, Subject: {subject}")
         return True
@@ -206,7 +291,7 @@ async def route_and_dispatch_notification(
 
     target_call_phone = settings.pagerduty_phone or "9372185727"
     target_sms_phone = settings.twilio_to_number or "8652477694"
-    target_email = settings.authority_email or "danishsjain@gmail.com"
+    target_email = (settings.authority_email or "aryanreddy2006@gmail.com").strip('"')
 
     for channel in channels:
         # Check 5-minute suppression window

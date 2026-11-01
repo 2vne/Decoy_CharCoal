@@ -186,3 +186,36 @@ All endpoints return JSON. Write endpoints require the `X-API-Key: changeme` hea
 - `POST /api/simulate/start` — Triggers background attack simulation scenario
 - `WS /ws/live` — Real-time event and state change stream
 
+---
+
+## Remediation Advisor & Gateway Lifecycle Management
+
+SENTINEL turns telemetry and incidents into actionable, evidence-grounded remediation advisories centered on the gateway lifecycle:
+`operational` &rarr; `attacked` &rarr; `taken_down` &rarr; `fixing` &rarr; `restored` &rarr; `WATCH MODE` (with automated re-attack detection).
+
+### Gateway Lifecycle Endpoints
+- `GET /api/gateways` — Lists all gateways with watch-mode status, remaining countdown, and safe-to-reopen indicator.
+- `POST /api/gateways/{id}/status` — Operator state transition (`operational`, `attacked`, `taken_down`, `fixing`, `restored`). Initiates watch window upon restoration.
+- `GET /api/gateways/{id}/timeline` — Chronological timeline of state transitions, attack payloads, and replay verification runs.
+- `GET /api/gateways/{id}/advisory` — Gateway-tailored remediation recommendations based on matched playbooks.
+- `POST /api/gateways/{id}/verify-fix` — Replays stored attack sequences against restored targets in `VERIFY_TARGETS` to prove the fix before reopening.
+
+### Remediation Advisor Endpoints
+- `GET /api/incidents/{id}/advisory` — Suggested immediate, pre-reopening, staged reopen, monitoring, and long-term fixes.
+- `POST /api/incidents/{id}/advisory/refresh` — Forces re-computation of advisory from fresh logs and playbooks.
+- `POST /api/advisory/steps/{step_id}/status` — Persists status of individual checklist steps (`pending`, `done`, `skipped`).
+- `GET /api/advisory/summary` — Aggregates top recurring fixes across all incidents.
+
+### Environment Configuration (.env)
+```bash
+WATCH_WINDOW_MIN=120           # Post-restore heightened observation window (minutes)
+REATTACK_WINDOW_MIN=60         # Window within which a repeat attack triggers re-attack escalation (minutes)
+WATCH_THRESHOLD_DROP=0.20      # Detection threshold reduction (20%) during active watch window
+VERIFY_TARGETS=http://127.0.0.1:8000,http://localhost:8000  # Authorized targets for hardening replay verification
+SMTP_HOST=                     # SMTP host for advisory notification dispatch
+SMTP_USER=                     # SMTP username
+SMTP_PASS=                     # SMTP password
+SMTP_TO=danishsjain@gmail.com  # Primary recipient for remediation alert emails
+```
+
+

@@ -1,5 +1,9 @@
 from __future__ import annotations
+import asyncio
+import logging
 from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy import desc, func, select
@@ -13,6 +17,11 @@ from app.services.function_intelligence import (
     compute_bounded_function_risk,
     record_function_targeting,
     sanitize_text,
+    execute_demo_action,
+    execute_demo_recon_sequence,
+    stop_demo_simulation,
+    reset_demo_session,
+    get_demo_status,
 )
 from app.services.ingest import get_or_create_attacker
 
@@ -217,3 +226,131 @@ async def simulate_function_targeting(
         "function_risk_score": attacker.function_risk_score,
         "breakdown": attacker.function_risk_breakdown,
     }
+
+
+# --------------------------------------------------------------------------
+# Manual Function Intelligence Demonstration Controls
+# --------------------------------------------------------------------------
+from pydantic import BaseModel
+
+
+class DemoActionRequest(BaseModel):
+    action: str  # "normal", "repeated", "sensitive_probe"
+    session_id: Optional[str] = "demo_fn_session_interactive"
+    target_function: Optional[str] = "auth_login"
+
+
+class DemoReconRequest(BaseModel):
+    session_id: Optional[str] = "demo_fn_session_interactive"
+
+
+class DemoStopRequest(BaseModel):
+    session_id: Optional[str] = "demo_fn_session_interactive"
+
+
+class DemoResetRequest(BaseModel):
+    session_id: Optional[str] = "demo_fn_session_interactive"
+
+
+@router.post("/demo/action")
+async def trigger_demo_action(
+    body: DemoActionRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Executes a controlled manual synthetic function targeting action:
+    - 'normal': Legitimate single-attempt access
+    - 'repeated': Repeated attempt bursts for the same function (attempts increment)
+    - 'sensitive_probe': Probing sensitive secrets/config or admin functions
+    """
+    try:
+        res = await execute_demo_action(
+            db=db,
+            action=body.action,
+            session_id=body.session_id,
+            target_function=body.target_function,
+        )
+
+        # Trigger PagerDuty Phone Call & Multi-Channel Incident Alert whenever an attack is clicked
+        if body.action in ("repeated", "sensitive_probe", "sensitive") or body.target_function in ("secrets_env", "admin_access", "payment_gateway", "database_api"):
+            try:
+                from app.services.alert_dispatcher import dispatch_function_intel_live_alert
+                asyncio.create_task(
+                    dispatch_function_intel_live_alert(
+                        action=body.action,
+                        target_function=res.get("target_function") or body.target_function or "auth_login",
+                        session_id=body.session_id,
+                        attempts=res.get("attempts", 1),
+                        evidence=res.get("explanation", ""),
+                    )
+                )
+            except Exception as e:
+                logger.warning(f"Failed to dispatch demo attack alert: {e}")
+
+        return res
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to execute demonstration action: {e}")
+
+
+@router.post("/demo/recon")
+async def trigger_demo_recon(
+    body: Optional[DemoReconRequest] = None,
+):
+    """
+    Triggers an asynchronous multi-step sequence across 4 distinct functions:
+    Login -> OTP -> Admin -> Database Core, activating sequence synergies.
+    """
+    session_id = body.session_id if body else "demo_fn_session_interactive"
+    try:
+        from app.services.alert_dispatcher import dispatch_function_intel_live_alert
+        asyncio.create_task(
+            dispatch_function_intel_live_alert(
+                action="recon",
+                target_function="database_api",
+                session_id=session_id,
+                attempts=4,
+                evidence="Multi-Function Reconnaissance Synergy targeting Login -> OTP -> Admin -> Database",
+            )
+        )
+    except Exception as e:
+        logger.warning(f"Failed to dispatch recon alert: {e}")
+    return await execute_demo_recon_sequence(session_id=session_id)
+
+
+@router.post("/demo/stop")
+async def trigger_demo_stop(
+    body: Optional[DemoStopRequest] = None,
+):
+    """
+    Immediately stops any ongoing multi-function reconnaissance sequence.
+    """
+    session_id = body.session_id if body else "demo_fn_session_interactive"
+    return stop_demo_simulation(session_id=session_id)
+
+
+@router.post("/demo/reset")
+async def trigger_demo_reset(
+    body: Optional[DemoResetRequest] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Resets the isolated synthetic demonstration session back to 0.
+    Deletes simulated demo events only. Genuine observed telemetry is preserved.
+    """
+    session_id = body.session_id if body else "demo_fn_session_interactive"
+    return await reset_demo_session(db=db, session_id=session_id)
+
+
+@router.get("/demo/status")
+async def get_demo_session_status(
+    session_id: str = Query("demo_fn_session_interactive"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Returns current state of the isolated demo session:
+    whether simulation is running, attempt counters, and risk score.
+    """
+    return await get_demo_status(db=db, session_id=session_id)
+

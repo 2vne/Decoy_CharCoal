@@ -46,6 +46,10 @@ export function SocProvider({ children }) {
   const [latestRiskScoreUpdate, setLatestRiskScoreUpdate] = useState(null);
   const [latestSessionTransition, setLatestSessionTransition] = useState(null);
   const [sessionTransitions, setSessionTransitions] = useState([]);
+  const [decoyInteractions, setDecoyInteractions] = useState([]);
+  const [latestDecoyInteraction, setLatestDecoyInteraction] = useState(null);
+  const [pagerdutyIncidents, setPagerdutyIncidents] = useState([]);
+  const [pagerdutyStatus, setPagerdutyStatus] = useState(null);
 
   // UI Toast notification state
   const [toasts, setToasts] = useState([]);
@@ -80,7 +84,7 @@ export function SocProvider({ children }) {
       }
 
       // 2. Fetch endpoints in parallel with resilient fallbacks for honeypot infrastructure
-      const [ovData, evData, atkData, hpData, incData, relData, blkData, metData, actData, fnStatsData, fnEvData] = await Promise.all([
+      const [ovData, evData, atkData, hpData, incData, relData, blkData, metData, actData, fnStatsData, fnEvData, pdIncData, pdStatData] = await Promise.all([
         api.getOverview(),
         api.getEvents({ limit: 100 }),
         api.getAttackers(),
@@ -95,6 +99,8 @@ export function SocProvider({ children }) {
         api.getActions().catch(() => []),
         api.getFunctionStats().catch(() => null),
         api.getFunctionEvents({ limit: 50 }).catch(() => ({ events: [] })),
+        api.getPagerDutyIncidents().catch(() => ({ incidents: [] })),
+        api.getPagerDutyStatus().catch(() => null),
       ]);
 
       setBackendError(null);
@@ -109,6 +115,8 @@ export function SocProvider({ children }) {
       setActions(actData || []);
       setFunctionStats(fnStatsData || null);
       setFunctionEvents(fnEvData?.events || []);
+      if (pdIncData?.incidents) setPagerdutyIncidents(pdIncData.incidents);
+      if (pdStatData) setPagerdutyStatus(pdStatData);
     } catch (err) {
       console.error('Backend connection failed:', err.message);
       setBackendError(err.message || 'Backend connection failed');
@@ -198,9 +206,19 @@ export function SocProvider({ children }) {
                 return {
                   ...prev,
                   total_targeted_events: (prev.total_targeted_events || 0) + 1,
+                  simulated_events_count: payload.is_simulated
+                    ? (prev.simulated_events_count || 0) + 1
+                    : (prev.simulated_events_count || 0),
+                  observed_events_count: !payload.is_simulated
+                    ? (prev.observed_events_count || 0) + 1
+                    : (prev.observed_events_count || 0),
                 };
               });
               addToast(`Function Target: ${payload.target_function} (${payload.src_ip})`, 'warning');
+            } else if (type === 'function_targeting_reset') {
+              setFunctionEvents((prev) => prev.filter((ev) => !ev.is_simulated));
+              api.getFunctionStats().then(setFunctionStats).catch(() => {});
+              addToast(`Demo session reset: simulated events cleared`, 'info');
             } else if (type === 'action') {
               setActions((prev) => {
                 const idx = prev.findIndex((a) => a.id === payload.id);
@@ -256,6 +274,32 @@ export function SocProvider({ children }) {
                 setLatestSessionTransition(payload.routing_transition);
                 setSessionTransitions((prev) => [payload.routing_transition, ...prev.slice(0, 49)]);
                 addToast(`DIVERSION EVENT: ${payload.routing_transition.transition} (${payload.src_ip})`, 'error');
+              }
+            } else if (type === 'decoy_interaction') {
+              setLatestDecoyInteraction(payload);
+              setDecoyInteractions((prev) => [payload, ...prev.slice(0, 49)]);
+              if (payload.is_honeytoken) {
+                addToast(`HONEYTOKEN ACCESSED: ${payload.endpoint} (${payload.src_ip})`, 'error');
+              }
+            } else if (type === 'pagerduty_incident') {
+              if (payload?.incident) {
+                setPagerdutyIncidents((prev) => {
+                  const idx = prev.findIndex((i) => i.dedup_key === payload.incident.dedup_key);
+                  if (idx >= 0) {
+                    const updated = [...prev];
+                    updated[idx] = { ...updated[idx], ...payload.incident };
+                    return updated;
+                  }
+                  return [payload.incident, ...prev];
+                });
+                const prio = payload.incident.priority || 'P2';
+                addToast(
+                  `PagerDuty [${prio}]: ${payload.incident.title}`,
+                  prio === 'P1' ? 'error' : 'warning'
+                );
+              }
+              if (payload?.stats) {
+                setPagerdutyStatus(payload.stats);
               }
             }
           } catch (e) {
@@ -456,6 +500,52 @@ export function SocProvider({ children }) {
     }
   };
 
+  const triggerPagerDutyTestAction = async (operator = 'soc_lead') => {
+    try {
+      const res = await api.triggerPagerDutyTest(operator);
+      if (res.incident) {
+        setPagerdutyIncidents((prev) => [res.incident, ...prev.filter((i) => i.dedup_key !== res.incident.dedup_key)]);
+      }
+      addToast('PagerDuty verification alert dispatched', 'info');
+      return res;
+    } catch (e) {
+      addToast(`PagerDuty test error: ${e.message}`, 'error');
+      throw e;
+    }
+  };
+
+  const ackPagerDutyIncidentAction = async (dedupKey, operator = 'soc_operator') => {
+    try {
+      const res = await api.acknowledgePagerDutyIncident(dedupKey, operator);
+      if (res.incident) {
+        setPagerdutyIncidents((prev) =>
+          prev.map((i) => (i.dedup_key === dedupKey ? { ...i, ...res.incident } : i))
+        );
+      }
+      addToast(`PagerDuty incident acknowledged: ${dedupKey}`, 'info');
+      return res;
+    } catch (e) {
+      addToast(`Failed to acknowledge incident: ${e.message}`, 'error');
+      throw e;
+    }
+  };
+
+  const resolvePagerDutyIncidentAction = async (dedupKey, operator = 'soc_operator', reason = 'Resolved by operator') => {
+    try {
+      const res = await api.resolvePagerDutyIncident(dedupKey, operator, reason);
+      if (res.incident) {
+        setPagerdutyIncidents((prev) =>
+          prev.map((i) => (i.dedup_key === dedupKey ? { ...i, ...res.incident } : i))
+        );
+      }
+      addToast(`PagerDuty incident resolved: ${dedupKey}`, 'success');
+      return res;
+    } catch (e) {
+      addToast(`Failed to resolve incident: ${e.message}`, 'error');
+      throw e;
+    }
+  };
+
   return (
     <SocContext.Provider
       value={{
@@ -477,6 +567,8 @@ export function SocProvider({ children }) {
         metrics,
         functionEvents,
         functionStats,
+        pagerdutyIncidents,
+        pagerdutyStatus,
         refreshFunctionStats: async () => {
           try {
             const [s, ev] = await Promise.all([api.getFunctionStats(), api.getFunctionEvents({ limit: 50 })]);
@@ -484,6 +576,15 @@ export function SocProvider({ children }) {
             setFunctionEvents(ev?.events || []);
           } catch (e) {
             console.error('Failed to refresh function stats', e);
+          }
+        },
+        refreshPagerdutyData: async () => {
+          try {
+            const [incs, stat] = await Promise.all([api.getPagerDutyIncidents(), api.getPagerDutyStatus()]);
+            if (incs?.incidents) setPagerdutyIncidents(incs.incidents);
+            if (stat) setPagerdutyStatus(stat);
+          } catch (e) {
+            console.error('Failed to refresh PagerDuty data', e);
           }
         },
         toasts,
@@ -498,6 +599,8 @@ export function SocProvider({ children }) {
         latestRiskScoreUpdate,
         latestSessionTransition,
         sessionTransitions,
+        decoyInteractions,
+        latestDecoyInteraction,
         refreshAllData,
         blockAttacker: blockAttackerAction,
         unblockAttacker: unblockAttackerAction,
@@ -506,6 +609,9 @@ export function SocProvider({ children }) {
         runSimulation: runSimulationAction,
         patchIncident: patchIncidentAction,
         addIncidentNote: addIncidentNoteAction,
+        triggerPagerDutyTest: triggerPagerDutyTestAction,
+        ackPagerDutyIncident: ackPagerDutyIncidentAction,
+        resolvePagerDutyIncident: resolvePagerDutyIncidentAction,
       }}
     >
       {children}

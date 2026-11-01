@@ -37,6 +37,8 @@ async def start_simulate(
 ):
     body = await request.json()
     scenario = body.get("scenario", "full_chain")
+    operator = body.get("operator") or request.client.host if request.client else "soc_operator"
+    launch_id = body.get("launch_id")
     raw_speed = body.get("speed", 1.0)
     speed_map = {"fast": 2.5, "faster": 4.0, "normal": 1.0, "slow": 0.5}
     if isinstance(raw_speed, str) and raw_speed in speed_map:
@@ -106,17 +108,22 @@ async def start_simulate(
                 )
             )
 
-        # 2. PagerDuty call trigger
-        if settings.pagerduty_routing_key:
+        # 2. PagerDuty Incident Manager (handles correlation, [SIMULATED] tags, idempotency)
+        try:
+            from app.services.pagerduty import dispatch_launch_control_pagerduty_alert
             alert_tasks.append(
-                send_pagerduty_alert(
-                    routing_key=settings.pagerduty_routing_key,
-                    summary=f"[ATTACK LAUNCHED] Sentinel SOC scenario '{scenario}' - Call dispatched to {pd_call_target}",
-                    source="sentinel:simulator",
-                    severity="critical",
-                    custom_details={"call_target": pd_call_target, "scenario": scenario, "sms_target": twilio_sms_target},
+                dispatch_launch_control_pagerduty_alert(
+                    scenario=scenario,
+                    operator=operator,
+                    launch_id=launch_id,
+                    speed=speed,
+                    is_simulated=True,
                 )
             )
+        except Exception as e:
+            logger.warning(f"PagerDuty launch dispatch error: {e}")
+
+        if settings.pagerduty_routing_key:
             alert_tasks.append(
                 send_twilio_voice_call(
                     to_number=pd_call_target,

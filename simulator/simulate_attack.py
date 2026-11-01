@@ -273,12 +273,112 @@ async def scenario_coordinated(client: httpx.AsyncClient, base_url: str, api_key
     print(">>> Completed coordinated scenario. Check Relationship Graph for shared_credentials and shared_malware!\n")
 
 
+async def scenario_gateway_reattack(client: httpx.AsyncClient, base_url: str, api_key: str, speed: float = 1.0):
+    """
+    STEP 8: Gateway Lifecycle & Re-Attack Simulation.
+    1. Attacker hits /api/payment until risk >= 51 (gateway attacked).
+    2. Lifecycle status calls: taken_down -> fixing -> restored (initiates WATCH MODE).
+    3. Attacker returns and hits /api/payment again -> triggers reattack_after_restore and heightened advisory.
+    """
+    print("\n" + "=" * 60)
+    print(">>> [SCENARIO] gateway_reattack: Gateway Lifecycle & Re-Attack Loop")
+    print("=" * 60)
+
+    attacker_ip = "198.51.100.77"
+    session_id = f"demo_reattack_{uuid.uuid4().hex[:8]}"
+    headers = {
+        "X-API-Key": api_key,
+        "X-Session-ID": session_id,
+        "X-Forwarded-For": attacker_ip,
+        "Content-Type": "application/json",
+    }
+
+    # Stage 1: Hit /api/payment until risk >= 51
+    print("\n[STAGE 1] Attacker targets Payment Gateway (/api/payment)...")
+    for step in range(1, 4):
+        payload = {
+            "customer_id": f"cust_target_{step}",
+            "amount": 9999.00 * step,
+            "token": "tok_unauthorized_override",
+            "action": "payment_manipulation",
+        }
+        try:
+            r = await client.post(
+                f"{base_url.rstrip('/')}/api/payment/checkout?attack=true",
+                json=payload,
+                headers=headers,
+                timeout=5.0,
+            )
+            print(f"  Step {step}/3: Status {r.status_code} | X-Gateway-Status: {r.headers.get('X-Gateway-Status', 'N/A')} | Risk: {r.headers.get('X-Sentinel-Risk', 'N/A')}")
+        except Exception as e:
+            print(f"  Step {step}/3: Request sent ({e})")
+        await sleep_scaled(0.3, speed)
+
+    # Check gateway status
+    gw_res = await client.get(f"{base_url.rstrip('/')}/api/gateways/payment", timeout=5.0)
+    gw_info = gw_res.json()
+    print(f"  --> Gateway Status: {gw_info.get('status', 'unknown').upper()} (Risk evaluated)")
+
+    # Fetch initial advisory
+    adv_res = await client.get(f"{base_url.rstrip('/')}/api/gateways/payment/advisory", timeout=5.0)
+    if adv_res.status_code == 200:
+        adv = adv_res.json()
+        print(f"  --> Remediation Advisory Generated: {adv.get('disclaimer')} ({adv.get('source')})")
+        print(f"  --> Top Immediate Action: {adv.get('immediate_actions', [{}])[0].get('step', 'N/A')}")
+
+    # Stage 2: Operator containment & remediation lifecycle
+    print("\n[STAGE 2] SOC Lifecycle Transitions: taken_down -> fixing -> restored...")
+    for next_status in ["taken_down", "fixing", "restored"]:
+        note = f"Operator transitioning state to {next_status}"
+        sr = await client.post(
+            f"{base_url.rstrip('/')}/api/gateways/payment/status",
+            json={"status": next_status, "note": note},
+            headers={"X-API-Key": api_key, "Content-Type": "application/json"},
+            timeout=5.0,
+        )
+        print(f"  --> Gateway set to: {next_status.upper()} (watch_mode={sr.json().get('is_watch_mode')})")
+        await sleep_scaled(0.4, speed)
+
+    print("  --> WATCH MODE active! Observation window initiated.")
+
+    # Stage 3: Same attacker returns and re-attacks during watch window
+    print("\n[STAGE 3] Re-attack: Adversary returns while gateway is in WATCH MODE...")
+    await sleep_scaled(0.5, speed)
+    re_payload = {
+        "customer_id": "cust_target_exploit",
+        "amount": 50000.00,
+        "token": "tok_reattack_bypass",
+        "action": "payment_manipulation",
+    }
+    try:
+        r2 = await client.post(
+            f"{base_url.rstrip('/')}/api/payment/checkout?attack=true",
+            json=re_payload,
+            headers=headers,
+            timeout=5.0,
+        )
+        print(f"  Re-attack Request: Status {r2.status_code} | X-Gateway-Status: {r2.headers.get('X-Gateway-Status', 'N/A')}")
+    except Exception as e:
+        print(f"  Re-attack Request sent: {e}")
+
+    # Verify re-attack state
+    gw_final_res = await client.get(f"{base_url.rstrip('/')}/api/gateways/payment", timeout=5.0)
+    final_info = gw_final_res.json()
+    print(f"\n[SUMMARY] Gateway Final Status: {final_info.get('status', 'unknown').upper()}")
+    print(f"  reattack_after_restore: {final_info.get('reattack_after_restore')}")
+    print(f"  reattack_count: {final_info.get('reattack_count')}")
+    print(f"  is_watch_mode: {final_info.get('is_watch_mode')} (remaining: {final_info.get('watch_remaining_seconds')}s)")
+    print(f"  safe_to_reopen: {final_info.get('safe_to_reopen')}")
+    print(">>> Completed gateway_reattack scenario successfully.\n")
+
+
 SCENARIOS = {
     "noise_scanner": scenario_noise_scanner,
     "brute_forcer": scenario_brute_forcer,
     "full_chain": scenario_full_chain,
     "repeat_attacker": scenario_repeat_attacker,
     "coordinated": scenario_coordinated,
+    "gateway_reattack": scenario_gateway_reattack,
 }
 
 

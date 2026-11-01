@@ -18,10 +18,14 @@ export function resolveBaseUrl() {
       return envUrl.trim().replace(/\/+$/, '');
     }
   }
-  return (envUrl || 'http://localhost:8000').trim().replace(/\/+$/, '');
+  return (envUrl || 'http://127.0.0.1:8000').trim().replace(/\/+$/, '');
 }
 
-export const BASE_URL = resolveBaseUrl();
+export let BASE_URL = resolveBaseUrl();
+
+export function setBaseUrl(newBase) {
+  BASE_URL = newBase;
+}
 
 /**
  * Backend Endpoint Authentication Analysis:
@@ -128,7 +132,10 @@ export const api = {
           clearTimeout(timeoutId);
           if (res && res.ok) {
             const data = await res.json().catch(() => ({}));
-            return { ok: true, data };
+            if (base && BASE_URL !== base) {
+              setBaseUrl(base);
+            }
+            return { ok: true, data, base };
           }
         } catch {
           // Continue to next probe
@@ -378,6 +385,47 @@ export const api = {
     return handleResponse(res);
   },
 
+  async triggerFunctionDemoAction(payload) {
+    const res = await fetch(`${BASE_URL}/api/intelligence/functions/demo/action`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify(payload),
+    });
+    return handleResponse(res);
+  },
+
+  async triggerFunctionDemoRecon(payload = {}) {
+    const res = await fetch(`${BASE_URL}/api/intelligence/functions/demo/recon`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify(payload),
+    });
+    return handleResponse(res);
+  },
+
+  async stopFunctionDemo(payload = {}) {
+    const res = await fetch(`${BASE_URL}/api/intelligence/functions/demo/stop`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify(payload),
+    });
+    return handleResponse(res);
+  },
+
+  async resetFunctionDemo(payload = {}) {
+    const res = await fetch(`${BASE_URL}/api/intelligence/functions/demo/reset`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify(payload),
+    });
+    return handleResponse(res);
+  },
+
+  async getFunctionDemoStatus(sessionId = 'demo_fn_session_interactive') {
+    const res = await fetch(`${BASE_URL}/api/intelligence/functions/demo/status?session_id=${encodeURIComponent(sessionId)}`);
+    return handleResponse(res);
+  },
+
   async getGatewayStats() {
     const res = await fetch(`${BASE_URL}/api/gateway/stats`);
     return handleResponse(res);
@@ -548,5 +596,139 @@ export const api = {
     const res = await fetch(`${BASE_URL}${basePath}/.env`);
     if (!res.ok) throw new Error(`HTTP ${res.status}: Failed to read configuration`);
     return res.text();
+  },
+
+  // --------------------------------------------------------------------------
+  // Controlled Decoy Latency & Attacker Behaviour Observation
+  // --------------------------------------------------------------------------
+  async getDecoyStats() {
+    const res = await fetch(`${BASE_URL}/demo/decoy/observation/stats`);
+    return handleResponse(res);
+  },
+
+  async setDecoyLatencyMode(mode) {
+    const res = await fetch(`${BASE_URL}/demo/decoy/observation/mode`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ mode }),
+    });
+    return handleResponse(res);
+  },
+
+  async runDecoyComparison(category = 'auth_login', sessionId = null) {
+    const res = await fetch(`${BASE_URL}/demo/decoy/observation/compare`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ category, session_id: sessionId }),
+    });
+    return handleResponse(res);
+  },
+
+  // --------------------------------------------------------------------------
+  // PagerDuty Incident Alerting & Escalation
+  // --------------------------------------------------------------------------
+  async getPagerDutyStatus() {
+    const res = await fetch(`${BASE_URL}/api/pagerduty/status`);
+    return handleResponse(res);
+  },
+
+  async getPagerDutyIncidents() {
+    const res = await fetch(`${BASE_URL}/api/pagerduty/incidents`);
+    return handleResponse(res);
+  },
+
+  async triggerPagerDutyTest(operator = 'soc_lead') {
+    const res = await fetch(`${BASE_URL}/api/pagerduty/test`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ operator }),
+    });
+    return handleResponse(res);
+  },
+
+  async acknowledgePagerDutyIncident(dedupKey, operator = 'soc_operator') {
+    const res = await fetch(`${BASE_URL}/api/pagerduty/incidents/${encodeURIComponent(dedupKey)}/acknowledge`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ operator }),
+    });
+    return handleResponse(res);
+  },
+
+  async resolvePagerDutyIncident(dedupKey, operator = 'soc_operator', reason = 'Threat contained') {
+    const res = await fetch(`${BASE_URL}/api/pagerduty/incidents/${encodeURIComponent(dedupKey)}/resolve`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ operator, reason }),
+    });
+    return handleResponse(res);
+  },
+
+  // --------------------------------------------------------------------------
+  // Remediation Advisor & Gateway Lifecycle Management
+  // --------------------------------------------------------------------------
+  async getGateways() {
+    const res = await fetch(`${BASE_URL}/api/gateways`);
+    return handleResponse(res);
+  },
+
+  async getGateway(gatewayId) {
+    const res = await fetch(`${BASE_URL}/api/gateways/${encodeURIComponent(gatewayId)}`);
+    return handleResponse(res);
+  },
+
+  async updateGatewayStatus(gatewayId, status, note = '') {
+    const res = await fetch(`${BASE_URL}/api/gateways/${encodeURIComponent(gatewayId)}/status`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ status, note }),
+    });
+    return handleResponse(res);
+  },
+
+  async getGatewayTimeline(gatewayId) {
+    const res = await fetch(`${BASE_URL}/api/gateways/${encodeURIComponent(gatewayId)}/timeline`);
+    return handleResponse(res);
+  },
+
+  async getGatewayAdvisory(gatewayId, refresh = false) {
+    const res = await fetch(`${BASE_URL}/api/gateways/${encodeURIComponent(gatewayId)}/advisory?refresh=${refresh}`);
+    return handleResponse(res);
+  },
+
+  async verifyGatewayFix(gatewayId, payload = {}) {
+    const res = await fetch(`${BASE_URL}/api/gateways/${encodeURIComponent(gatewayId)}/verify-fix`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify(payload),
+    });
+    return handleResponse(res);
+  },
+
+  async getIncidentAdvisory(incidentId, refresh = false) {
+    const res = await fetch(`${BASE_URL}/api/incidents/${encodeURIComponent(incidentId)}/advisory?refresh=${refresh}`);
+    return handleResponse(res);
+  },
+
+  async refreshIncidentAdvisory(incidentId) {
+    const res = await fetch(`${BASE_URL}/api/incidents/${encodeURIComponent(incidentId)}/advisory/refresh`, {
+      method: 'POST',
+      headers: jsonHeaders,
+    });
+    return handleResponse(res);
+  },
+
+  async updateAdvisoryStepStatus(stepId, status, note = '', incidentId = null, gatewayId = null) {
+    const res = await fetch(`${BASE_URL}/api/advisory/steps/${encodeURIComponent(stepId)}/status`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ status, note, incident_id: incidentId, gateway_id: gatewayId }),
+    });
+    return handleResponse(res);
+  },
+
+  async getAdvisorySummary() {
+    const res = await fetch(`${BASE_URL}/api/advisory/summary`);
+    return handleResponse(res);
   },
 };

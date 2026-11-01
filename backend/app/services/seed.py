@@ -4,7 +4,7 @@ import hashlib
 from typing import Any, Dict, List
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models import Attacker, Event, MitreMapping, KillChainMapping, Relationship, Incident, Block
+from app.models import Attacker, Event, MitreMapping, KillChainMapping, Relationship, Incident, Block, Gateway
 from app.services.fingerprint import compute_fingerprint
 
 DEMO_ATTACKERS = [
@@ -352,9 +352,47 @@ async def seed_demo(db: AsyncSession) -> None:
     await db.flush()
 
 
+async def seed_gateways_if_needed(db: AsyncSession) -> None:
+    now = datetime.now(timezone.utc)
+    res = await db.execute(select(func.count(Gateway.id)))
+    count = res.scalar_one()
+    if count == 0:
+        gateways = [
+            Gateway(
+                id="payment",
+                name="Payment Gateway",
+                endpoint_prefix="/api/payment",
+                owner_team="payments_team",
+                status="operational",
+                status_history=[{"status": "operational", "timestamp": now.isoformat(), "note": "Initial operational status", "actor": "system"}],
+            ),
+            Gateway(
+                id="auth",
+                name="Authentication Gateway",
+                endpoint_prefix="/api/auth",
+                owner_team="identity_team",
+                status="operational",
+                status_history=[{"status": "operational", "timestamp": now.isoformat(), "note": "Initial operational status", "actor": "system"}],
+            ),
+            Gateway(
+                id="admin",
+                name="Admin Console",
+                endpoint_prefix="/admin",
+                owner_team="platform_team",
+                status="operational",
+                status_history=[{"status": "operational", "timestamp": now.isoformat(), "note": "Initial operational status", "actor": "system"}],
+            ),
+        ]
+        for gw in gateways:
+            db.add(gw)
+        await db.flush()
+
+
 async def seed_if_needed(db: AsyncSession) -> None:
+    await seed_gateways_if_needed(db)
     res = await db.execute(select(func.count(Attacker.id)))
     count = res.scalar_one()
     if count == 0:
         await seed_demo(db)
+
 

@@ -29,6 +29,10 @@ from app.routers import (
     gateway,
     failure_intelligence,
     git_intelligence,
+    pagerduty,
+    gateways,
+    advisory,
+    gateway_endpoints,
 )
 from app.demo_apps.real_app import router as real_app_router
 from app.demo_apps.decoy_app import router as decoy_app_router
@@ -69,11 +73,14 @@ async def lifespan(app: FastAPI):
     logger.info("Database schema initialized.")
 
     # 2. Seed demo dataset if enabled
-    if settings.seed_demo:
-        async with AsyncSessionLocal() as db:
-            async with db.begin():
+    async with AsyncSessionLocal() as db:
+        async with db.begin():
+            if settings.seed_demo:
                 await seed_if_needed(db)
-        logger.info("Demo attacker profiles seeded successfully.")
+            else:
+                from app.services.seed import seed_gateways_if_needed
+                await seed_gateways_if_needed(db)
+    logger.info("Demo attacker profiles and gateways verified successfully.")
 
     # 3. Start auto rollback worker
     _rollback_worker_task = asyncio.create_task(_rollback_loop())
@@ -138,6 +145,11 @@ app.include_router(real_app_router)
 app.include_router(decoy_app_router)
 app.include_router(failure_intelligence.router, prefix="/api", tags=["Failure Intelligence"])
 app.include_router(git_intelligence.router, prefix="/api", tags=["Git Intelligence"])
+app.include_router(pagerduty.router, prefix="/api", tags=["PagerDuty Integration"])
+app.include_router(gateways.router, prefix="/api", tags=["Gateway Lifecycle & Verification"])
+app.include_router(advisory.router, prefix="/api", tags=["Remediation Advisor"])
+app.include_router(gateway_endpoints.router, prefix="/api", tags=["Protected Gateways Traffic"])
+app.include_router(gateway_endpoints.router, tags=["Protected Gateways Traffic Root"])
 app.include_router(simulate.router, prefix="/api", tags=["Simulation"])
 app.include_router(ws.router, tags=["WebSocket"])
 

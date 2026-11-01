@@ -259,6 +259,7 @@ class FunctionTargetEvent(Base):
     evidence: Mapped[str] = mapped_column(sa.Text, default="")
     confidence: Mapped[float] = mapped_column(sa.Float, default=1.0)
     is_simulated: Mapped[bool] = mapped_column(sa.Boolean, default=False, index=True)
+    session_id: Mapped[Optional[str]] = mapped_column(sa.String(128), nullable=True, default=None, index=True)
     timestamp: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), default=utc_now)
 
 
@@ -365,6 +366,68 @@ class ObservedBehaviourEvent(Base):
     evidence: Mapped[str] = mapped_column(sa.Text, default="")
     timestamp: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), default=utc_now, index=True)
     is_simulated: Mapped[bool] = mapped_column(sa.Boolean, default=False)
+
+
+class DecoyInteractionLog(Base):
+    """
+    Detailed attacker behaviour tracking in the isolated decoy application.
+    Captures request sequence, response latency, interaction categories, and honeytokens.
+    """
+    __tablename__ = "decoy_interaction_logs"
+
+    id: Mapped[int] = mapped_column(sa.Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(sa.String(128), index=True)
+    src_ip: Mapped[str] = mapped_column(sa.String(64), index=True)
+    endpoint: Mapped[str] = mapped_column(sa.String(256))
+    method: Mapped[str] = mapped_column(sa.String(16), default="GET")
+    interaction_category: Mapped[str] = mapped_column(sa.String(64), index=True)
+    request_sequence: Mapped[int] = mapped_column(sa.Integer, default=1)
+    response_latency_ms: Mapped[float] = mapped_column(sa.Float, default=0.0)
+    delay_applied_seconds: Mapped[float] = mapped_column(sa.Float, default=0.0)
+    is_honeytoken: Mapped[bool] = mapped_column(sa.Boolean, default=False)
+    sanitized_evidence: Mapped[str] = mapped_column(sa.Text, default="")
+    user_agent: Mapped[Optional[str]] = mapped_column(sa.String(512), nullable=True)
+    session_duration_seconds: Mapped[float] = mapped_column(sa.Float, default=0.0)
+    timestamp: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), default=utc_now, index=True)
+
+
+class Gateway(Base):
+    """
+    Gateway Lifecycle Management:
+    Tracks gateways through operational -> attacked -> taken_down -> fixing -> restored -> (watch window).
+    """
+    __tablename__ = "gateways"
+
+    id: Mapped[str] = mapped_column(sa.String(64), primary_key=True)  # payment, auth, admin
+    name: Mapped[str] = mapped_column(sa.String(128))
+    endpoint_prefix: Mapped[str] = mapped_column(sa.String(128), index=True)
+    owner_team: Mapped[str] = mapped_column(sa.String(64), default="platform_team")
+    status: Mapped[str] = mapped_column(sa.String(32), default="operational")  # operational | attacked | taken_down | fixing | restored
+    status_history: Mapped[List[Dict[str, Any]]] = mapped_column(sa.JSON, default=list)
+    restored_at: Mapped[Optional[datetime]] = mapped_column(sa.DateTime(timezone=True), nullable=True)
+    watch_until: Mapped[Optional[datetime]] = mapped_column(sa.DateTime(timezone=True), nullable=True)
+    reattack_after_restore: Mapped[bool] = mapped_column(sa.Boolean, default=False)
+    reattack_count: Mapped[int] = mapped_column(sa.Integer, default=0)
+    last_attack_sequence: Mapped[List[Dict[str, Any]]] = mapped_column(sa.JSON, default=list)
+    last_verify_result: Mapped[Optional[Dict[str, Any]]] = mapped_column(sa.JSON, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+
+class AdvisoryStepStatus(Base):
+    """
+    Tracks execution status of individual remediation advisory steps.
+    """
+    __tablename__ = "advisory_step_statuses"
+
+    id: Mapped[int] = mapped_column(sa.Integer, primary_key=True, autoincrement=True)
+    step_id: Mapped[str] = mapped_column(sa.String(128), index=True)
+    incident_id: Mapped[Optional[str]] = mapped_column(sa.String(64), nullable=True, index=True)
+    gateway_id: Mapped[Optional[str]] = mapped_column(sa.String(64), nullable=True, index=True)
+    status: Mapped[str] = mapped_column(sa.String(32), default="pending")  # pending | done | skipped
+    note: Mapped[Optional[str]] = mapped_column(sa.Text, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), default=utc_now)
+
+
 
 
 

@@ -14,6 +14,7 @@ from app.models import (
     VisitorSessionRisk,
     AccountRiskHistory,
     ObservedBehaviourEvent,
+    Gateway,
 )
 from app.services.broadcast import broadcast
 
@@ -473,12 +474,14 @@ def evaluate_routing_decision(
     is_already_diverted: bool = False,
     is_critical_event: bool = False,
     critical_event_reason: Optional[str] = None,
+    is_watch_mode: bool = False,
 ) -> Tuple[str, str]:
     """
     Evaluates dynamic route with independent-category safeguard and critical event policy:
     - If already diverted: remains isolated on decoy.
     - If critical event occurred (e.g. .env, .git, payment tampering, unauthorized db dump)
       and critical_event_immediate_divert is enabled: immediately divert to decoy.
+    - During active WATCH MODE: decoy routing threshold is reduced by WATCH_THRESHOLD_DROP (default 20%).
     - 0-29: real (Normal legitimate traffic)
     - 30-49: real (Enhanced monitoring)
     - 50-69: real (Additional scrutiny)
@@ -501,6 +504,8 @@ def evaluate_routing_decision(
         )
 
     threshold = settings.decoy_routing_threshold
+    if is_watch_mode:
+        threshold = threshold * (1.0 - getattr(settings, "watch_threshold_drop", 0.20))
     min_independent = settings.decoy_min_independent_categories
     emergency_policy = settings.emergency_single_vector_divert
 
@@ -517,15 +522,16 @@ def evaluate_routing_decision(
     elif risk_score < threshold:
         return (
             "real",
-            f"Allowed to REAL application with additional scrutiny: High risk score {risk_score:.2f}/100.",
+            f"Allowed to REAL application with additional scrutiny: High risk score {risk_score:.2f}/100 (threshold: {threshold:.1f}).",
         )
     else:
-        # Score >= 70.0: Check independent-category safeguard!
+        # Score exceeds threshold: Check independent-category safeguard!
         if independent_categories_count >= min_independent or emergency_policy:
             cats_str = ", ".join([c for c in active_categories if c != "combined_patterns"])
+            mode_prefix = "[WATCH MODE] " if is_watch_mode else ""
             return (
                 "decoy",
-                f"Diverted to DECOY: Threat score {risk_score:.2f}/100 confirmed by {independent_categories_count} independent categories ({cats_str}).",
+                f"{mode_prefix}Diverted to DECOY: Threat score {risk_score:.2f}/100 confirmed by {independent_categories_count} independent categories ({cats_str}).",
             )
         else:
             cats_str = ", ".join(active_categories)
@@ -683,6 +689,28 @@ async def record_behaviour_event(
     sess.last_seen = now_utc
 
     # 5. Evaluate routing decision with safeguard & critical policy
+    # Check if this category touches a gateway in active watch mode
+    is_watch_mode = False
+    matching_gw_id = None
+    if "payment" in norm_cat or "/payment" in endpoint:
+        matching_gw_id = "payment"
+    elif "admin" in norm_cat or "/admin" in endpoint:
+        matching_gw_id = "admin"
+    elif any(c in norm_cat for c in ["auth", "login", "otp", "password"]):
+        matching_gw_id = "auth"
+
+    gw_obj = None
+    if matching_gw_id:
+        try:
+            gw_res = await db.execute(select(Gateway).where(Gateway.id == matching_gw_id))
+            gw_obj = gw_res.scalar_one_or_none()
+            if gw_obj and gw_obj.watch_until:
+                wu = gw_obj.watch_until if gw_obj.watch_until.tzinfo else gw_obj.watch_until.replace(tzinfo=timezone.utc)
+                if wu > now_utc:
+                    is_watch_mode = True
+        except Exception:
+            pass
+
     crit_desc = critical_reason or evidence or f"{category.upper()} - {event_type}"
     new_route, route_reason = evaluate_routing_decision(
         risk_score=new_score,
@@ -691,7 +719,23 @@ async def record_behaviour_event(
         is_already_diverted=sess.is_diverted,
         is_critical_event=is_crit,
         critical_event_reason=crit_desc,
+        is_watch_mode=is_watch_mode,
     )
+
+    # Auto-rule: request to prefix with attacker risk >= 51 triggers gateway attacked state
+    if gw_obj and (new_score >= 51.0 or is_crit):
+        try:
+            from app.services.gateway_lifecycle import on_gateway_attack
+            attack_req = {
+                "path": endpoint or gw_obj.endpoint_prefix,
+                "method": "POST" if is_crit else "GET",
+                "payload": evidence,
+                "headers": {},
+                "src_ip": src_ip,
+            }
+            await on_gateway_attack(gw_obj, new_score, attack_req, db, now=now_utc)
+        except Exception:
+            pass
 
     # 6. Check for REAL -> DECOY transition
     transition_record = None
@@ -728,8 +772,46 @@ async def record_behaviour_event(
         except Exception:
             pass
 
+        # Autonomous Alert Dispatch on real-to-decoy transition
+        try:
+            from app.services.alert_dispatcher import dispatch_attack_alert_background
+            dispatch_attack_alert_background(
+                src_ip=src_ip,
+                target_function=category,
+                target_endpoint=endpoint,
+                attack_type=event_type,
+                severity="critical" if is_crit else ("high" if new_score >= 70 else "medium"),
+                score=new_score,
+                evidence=evidence or route_reason,
+                is_simulated=is_simulated,
+                session_id=session_id,
+                is_critical=is_crit,
+                category=category,
+            )
+        except Exception:
+            pass
+
     else:
         sess.current_route = new_route
+        # Autonomous Alert Dispatch if critical attack or high score even if already on decoy
+        if is_crit or new_score >= 60.0:
+            try:
+                from app.services.alert_dispatcher import dispatch_attack_alert_background
+                dispatch_attack_alert_background(
+                    src_ip=src_ip,
+                    target_function=category,
+                    target_endpoint=endpoint,
+                    attack_type=event_type,
+                    severity="critical" if is_crit else "high",
+                    score=new_score,
+                    evidence=evidence or crit_desc,
+                    is_simulated=is_simulated,
+                    session_id=session_id,
+                    is_critical=is_crit,
+                    category=category,
+                )
+            except Exception:
+                pass
 
     # 7. Synchronize Account Risk History if account is known
     if account_email:

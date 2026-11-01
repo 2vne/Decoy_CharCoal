@@ -28,6 +28,7 @@ import {
 import { useSoc } from '../context/SocContext';
 import { BASE_URL } from '../api/client';
 import AttackerInvestigation from './AttackerInvestigation';
+import NoobAdvisorFloating from './NoobAdvisorFloating';
 
 export default function Layout() {
   const {
@@ -338,6 +339,9 @@ export default function Layout() {
           onClose={() => setSelectedAttackerId(null)}
         />
       )}
+
+      {/* Floating noob Remediation Advisor in Bottom-Right Corner */}
+      <NoobAdvisorFloating />
     </div>
   );
 }

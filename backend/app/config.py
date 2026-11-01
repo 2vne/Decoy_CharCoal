@@ -104,6 +104,31 @@ class Settings(BaseSettings):
         "database_access",
     ]
 
+    # Controlled Decoy Latency and Attacker Behaviour Observation
+    decoy_latency_enabled: bool = True
+    decoy_max_concurrent_delayed_requests: int = 50
+    decoy_latency_profiles: dict = {
+        "landing": {"min": 0.0, "max": 0.3},          # Landing page: 0–300 ms
+        "auth_login": {"min": 1.0, "max": 2.0},       # Fake login: 1–2 seconds
+        "auth_otp": {"min": 2.0, "max": 3.0},         # Fake OTP: 2–3 seconds
+        "auth_reset": {"min": 1.0, "max": 2.0},       # Fake password reset: 1–2 seconds
+        "admin_console": {"min": 2.0, "max": 4.0},    # Fake admin console: 2–4 seconds
+        "database_api": {"min": 2.0, "max": 5.0},     # Fake customer/database API: 2–5 seconds
+        "payment_gateway": {"min": 3.0, "max": 5.0},  # Fake payment gateway: 3–5 seconds
+        "honeytoken": {"min": 1.0, "max": 3.0},       # Honeytoken interactions: 1–3 seconds
+        "default": {"min": 0.2, "max": 0.8},
+    }
+
+    # Remediation Advisor & Gateway Lifecycle Configuration
+    watch_window_min: int = 120
+    reattack_window_min: int = 60
+    watch_threshold_drop: float = 0.20
+    verify_targets: str = "http://127.0.0.1:8000,http://localhost:8000"
+    smtp_host: str = ""
+    smtp_user: str = ""
+    smtp_pass: str = ""
+    smtp_to: str = "danishsjain@gmail.com"
+
     @field_validator("safe_ips", mode="before")
     @classmethod
     def parse_safe_ips(cls, v):

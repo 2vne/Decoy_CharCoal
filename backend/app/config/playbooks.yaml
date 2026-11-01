@@ -1,0 +1,623 @@
+playbooks:
+  - id: pb_credential_stuffing
+    title: "Credential Stuffing & Authentication Defense"
+    severity: "high"
+    trigger:
+      categories:
+        - "authentication_login"
+        - "auth_login"
+        - "login_failures"
+        - "two_factor_otp"
+        - "auth_otp"
+        - "otp_failures"
+      mitre_techniques:
+        - "T1110"
+        - "T1110.001"
+        - "T1110.003"
+        - "T1110.004"
+      classifications:
+        - "SUSPICIOUS"
+        - "HIGH_RISK"
+        - "LIKELY_MALICIOUS"
+      intent:
+        - "credential_access"
+        - "brute_force"
+    immediate_actions:
+      - step: "Deploy progressive IP and subnet rate limiting on authentication and OTP verification endpoints"
+        why: "Throttles high-velocity automated credential stuffing bursts at the perimeter"
+      - step: "Enforce adaptive account lockout and challenge CAPTCHA after repeated consecutive failures"
+        why: "Halts automated dictionary attacks targeting specific user accounts"
+      - step: "Mandate step-up Multi-Factor Authentication (MFA) across all active authentication sessions"
+        why: "Prevents attackers with compromised passwords from gaining session tokens"
+      - step: "Rotate potentially exposed session credentials and invalidate active refresh tokens"
+        why: "Neutralizes hijacked or breached sessions already held by the adversary"
+      - step: "Perform breach database checks (HaveIBeenPwned API/k-anonymity) on attempted passwords"
+        why: "Identifies whether users are utilizing publicly known compromised credentials"
+    before_reopening:
+      - step: "Verify account lockout policies and rate limiter fail-closed rules are operational"
+        why: "Ensures that service restart does not open an unthrottled authentication window"
+      - step: "Validate that failed auth telemetry is properly streaming to Sentinel SIEM tripwires"
+        why: "Guarantees rapid detection if credential spray persists"
+    staged_reopen:
+      - phase: 1
+        traffic_percent: 15
+        exit_criteria: "Authentication error rate below 3% for 15 minutes; zero brute-force cluster triggers"
+      - phase: 2
+        traffic_percent: 50
+        exit_criteria: "Normal login velocity confirmed with active MFA challenge completion"
+      - phase: 3
+        traffic_percent: 100
+        exit_criteria: "Full traffic restored under active watch mode with heightened rate limits"
+    monitoring_after_restore:
+      - step: "Monitor ratio of failed-to-successful logins across 5-minute sliding windows"
+        why: "Early indicator of distributed credential stuffing resurgence"
+      - step: "Alert on rapid OTP verification failures exceeding 3 attempts per session"
+        why: "Detects sequential OTP guessing attacks on second-factor steps"
+    long_term_fixes:
+      - step: "Transition authentication architecture to FIDO2 / WebAuthn passwordless passkeys"
+        why: "Eliminates shared-secret credential stuffing vulnerability vectors completely"
+      - step: "Implement device fingerprinting and behavioral anomaly analysis at login edge"
+        why: "Distinguishes legitimate user devices from automated headless browser farms"
+    references:
+      - "MITRE ATT&CK T1110: Brute Force"
+      - "OWASP Automated Threat Handbook OAT-008: Credential Stuffing"
+      - "NIST SP 800-63B: Digital Identity Guidelines"
+
+  - id: pb_secrets_exposure
+    title: "Secrets, Configuration & Source Code Exposure Remediation"
+    severity: "critical"
+    trigger:
+      categories:
+        - "secrets_env_files"
+        - "secrets_env"
+        - "secrets_probing"
+        - "secrets_code_probing"
+      mitre_techniques:
+        - "T1552"
+        - "T1552.001"
+      classifications:
+        - "HIGH_RISK"
+        - "LIKELY_MALICIOUS"
+      intent:
+        - "credential_access"
+        - "discovery"
+    immediate_actions:
+      - step: "Rotate all database passwords, JWT signing keys, AWS IAM tokens, and API secret keys"
+        why: "Assumes exposed environment files or tokens have been harvested by the adversary"
+      - step: "Immediately block access to .env, .git, .aws, and configuration paths at edge NGINX/WAF"
+        why: "Stops continuing harvesting of sensitive environment files"
+      - step: "Revoke and reissue all cloud provider service account tokens and STS session keys"
+        why: "Restricts unauthorized lateral movement within cloud environments"
+      - step: "Scan Git repository commit history and branches for committed sensitive secrets"
+        why: "Verifies whether secrets were accidentally committed to source control"
+    before_reopening:
+      - step: "Confirm static file web server rule explicitly denies hidden files and dotted paths (.env*, .git*)"
+        why: "Prevents configuration regression when gateway service is restarted"
+      - step: "Verify new rotated secrets are injected strictly via secure secret manager runtime env"
+        why: "Ensures plaintext secret files are eliminated from file system roots"
+    staged_reopen:
+      - phase: 1
+        traffic_percent: 10
+        exit_criteria: "Zero requests allowed to dot-file paths; verified 403/404 drop rule execution"
+      - phase: 2
+        traffic_percent: 50
+        exit_criteria: "Application verified healthy running on new rotated encryption and token keys"
+      - phase: 3
+        traffic_percent: 100
+        exit_criteria: "Full workload serving with edge secret scrubbing active"
+    monitoring_after_restore:
+      - step: "Maintain tripwire honeytoken strings in decoy .env to immediately catch repeat access"
+        why: "Provides 100% high-fidelity alerting if scanner probes the endpoint again"
+      - step: "Audit cloud IAM access logs (CloudTrail / GCP Audit) for use of revoked credentials"
+        why: "Traces any unauthorized infrastructure queries attempted with previously stolen keys"
+    long_term_fixes:
+      - step: "Adopt automated secret scanning in CI/CD pipeline (TruffleHog / GitGuardian)"
+        why: "Prevents secrets from entering repository commits or build artifacts"
+      - step: "Implement short-lived dynamic credentials using HashiCorp Vault or Cloud IAM Workload Identity"
+        why: "Limits blast radius by replacing long-lived static secrets with auto-expiring tokens"
+    references:
+      - "MITRE ATT&CK T1552: Unsecured Credentials"
+      - "OWASP Top 10 A05:2021 Security Misconfiguration"
+
+  - id: pb_payment_gateway_attack
+    title: "Payment Gateway Tampering & Transaction Integrity Isolation"
+    severity: "critical"
+    trigger:
+      categories:
+        - "payment_gateway"
+        - "payment_tamper"
+        - "unauthorized_payment"
+      mitre_techniques:
+        - "T1565"
+        - "T1565.002"
+        - "T1059"
+      classifications:
+        - "LIKELY_MALICIOUS"
+      intent:
+        - "impact"
+        - "financial_theft"
+        - "tampering"
+    immediate_actions:
+      - step: "Take payment gateway API offline or place gateway into safe read-only maintenance mode"
+        why: "Prevents fraudulent balance deductions, unauthorized charges, or order tampering"
+      - step: "Verify cryptographic transaction ledger integrity and reconcile all orders in past 6 hours"
+        why: "Identifies whether compromised charge amounts, currency codes, or statuses were accepted"
+      - step: "Rotate payment processor API secret keys and webhook signature secrets immediately"
+        why: "Prevents forged webhook payment confirmation callbacks from external attackers"
+      - step: "Deploy strict server-side order price verification and idempotency validation patch"
+        why: "Blocks parameter tampering where client specifies order price or token status"
+      - step: "Enforce WAF rate limiting and payload validation rules on /checkout and /pay routes"
+        why: "Filters out malformed charge requests before reaching backend billing logic"
+    before_reopening:
+      - step: "Execute comprehensive automated transaction integrity regression test suite"
+        why: "Validates that client-submitted prices cannot override authoritative catalog pricing"
+      - step: "Verify payment provider webhook HMAC signature verification fails closed on mismatch"
+        why: "Guarantees webhook replay and forging attempts are dropped"
+    staged_reopen:
+      - phase: 1
+        traffic_percent: 5
+        exit_criteria: "Canary payment processing verified against real processor sandbox with zero drift"
+      - phase: 2
+        traffic_percent: 25
+        exit_criteria: "Transaction settlement matches database ledger perfectly over 30-minute window"
+      - phase: 3
+        traffic_percent: 100
+        exit_criteria: "Full transaction flow restored with double-entry cryptographic reconciliation enabled"
+    monitoring_after_restore:
+      - step: "Monitor payment gateway error rates and chargeback notifications in real time"
+        why: "Catches edge-case failures or disgruntled attacker retry bursts"
+      - step: "Alert immediately on any transaction with price discrepancy between catalog and payment call"
+        why: "Provides zero-tolerance detection of parameter tampering attempts"
+    long_term_fixes:
+      - step: "Enforce complete server-side price calculation and cryptographically signed checkout tokens"
+        why: "Makes client-side request parameter modification mathematically impossible"
+      - step: "Implement automated real-time financial anomaly detection and velocity limits per card/user"
+        why: "Detects card testing and automated fraud before bank settlements occur"
+    references:
+      - "PCI-DSS v4.0 Requirement 6: Secure Systems and Software"
+      - "MITRE ATT&CK T1565.002: Transmitted Data Manipulation"
+
+  - id: pb_admin_panel
+    title: "Administrative Console & Privilege Escalation Defense"
+    severity: "high"
+    trigger:
+      categories:
+        - "admin_panel"
+        - "admin_access"
+        - "unauthorized_admin"
+      mitre_techniques:
+        - "T1078"
+        - "T1078.004"
+        - "T1548"
+      classifications:
+        - "HIGH_RISK"
+        - "LIKELY_MALICIOUS"
+      intent:
+        - "privilege_escalation"
+        - "defense_evasion"
+    immediate_actions:
+      - step: "Restrict admin panel endpoint access by source IP allowlist or corporate VPN at perimeter"
+        why: "Eliminates public internet reachability of administrative consoles"
+      - step: "Enforce hardware security key (FIDO2/WebAuthn) MFA across all administrator roles"
+        why: "Stops compromised admin passwords from permitting dashboard entry"
+      - step: "Audit all existing administrator accounts, API tokens, and recently granted role permissions"
+        why: "Uncovers stealthily created rogue admin accounts or unauthorized permission expansions"
+      - step: "Relocate or obfuscate internal management routes away from well-known paths like /admin"
+        why: "Neutralizes generic automated admin scanning bots"
+    before_reopening:
+      - step: "Verify role-based access control (RBAC) middleware executes before all sub-route controllers"
+        why: "Prevents broken object-level authorization (BOLA) and route traversal bypasses"
+      - step: "Confirm IP allowlist rules fail closed with HTTP 403 for unauthorized origins"
+        why: "Ensures no admin console requests reach backend application without verified IP/VPN"
+    staged_reopen:
+      - phase: 1
+        traffic_percent: 10
+        exit_criteria: "Admin access verified operational exclusively for internal whitelisted IP addresses"
+      - phase: 2
+        traffic_percent: 50
+        exit_criteria: "Zero unauthorized probe hits reaching authenticated admin routes"
+      - phase: 3
+        traffic_percent: 100
+        exit_criteria: "Full administrative access restored with comprehensive audit logging enabled"
+    monitoring_after_restore:
+      - step: "Log and alert on every administrative action (role changes, config updates, data exports)"
+        why: "Maintains an immutable paper trail of all high-privilege operations"
+      - step: "Alert on any 401/403 attempts targeting administrative route prefixes"
+        why: "Detects persistent reconnaissance attempting to discover relocated admin portals"
+    long_term_fixes:
+      - step: "Migrate internal consoles behind a Zero Trust Identity-Aware Proxy (e.g. Cloudflare Access, Google BeyondCorp)"
+        why: "Replaces network-layer IP restrictions with context-aware, cryptographically authenticated sessions"
+      - step: "Implement Just-In-Time (JIT) privileged access management with temporary elevation approval"
+        why: "Ensures persistent administrative privileges do not remain permanently enabled"
+    references:
+      - "MITRE ATT&CK T1078: Valid Accounts"
+      - "NIST SP 800-207: Zero Trust Architecture"
+
+  - id: pb_api_abuse
+    title: "API Abuse, Key Enumeration & Rate Limit Enforcement"
+    severity: "medium"
+    trigger:
+      categories:
+        - "api_keys_tokens"
+        - "endpoint_enumeration"
+        - "abnormal_rate"
+      mitre_techniques:
+        - "T1059"
+        - "T1499"
+        - "T1499.004"
+      classifications:
+        - "SUSPICIOUS"
+        - "HIGH_RISK"
+      intent:
+        - "discovery"
+        - "resource_exhaustion"
+    immediate_actions:
+      - step: "Revoke and reissue compromised API keys and client access tokens involved in the incident"
+        why: "Terminates active unauthorized scraping or flood operations using stolen keys"
+      - step: "Apply strict per-token, per-IP, and per-endpoint sliding-window rate limits at gateway"
+        why: "Prevents automated brute-force enumeration and Denial-of-Service resource exhaustion"
+      - step: "Enable strict OpenAPI request schema and payload type validation on all API endpoints"
+        why: "Rejects malformed fuzzing payloads, unexpected fields, and injection attempts early"
+      - step: "Enforce granular scope constraints and maximum expiration TTL on all issued API tokens"
+        why: "Limits blast radius so API keys cannot perform actions outside their assigned domain"
+    before_reopening:
+      - step: "Confirm token authorization middleware executes before endpoint controller routing"
+        why: "Prevents unauthenticated request processing if route lookup is bypassed"
+      - step: "Verify rate limiter counters persist across gateway worker processes"
+        why: "Ensures multi-worker load balancing does not dilute configured rate limit thresholds"
+    staged_reopen:
+      - phase: 1
+        traffic_percent: 20
+        exit_criteria: "Rate limiter successfully drops exceeding requests with HTTP 429 Too Many Requests"
+      - phase: 2
+        traffic_percent: 60
+        exit_criteria: "API latency and database connection pool remain stable under load"
+      - phase: 3
+        traffic_percent: 100
+        exit_criteria: "Full API traffic restored with token-based quotas enforced"
+    monitoring_after_restore:
+      - step: "Track distribution of HTTP 400, 401, 403, and 429 status codes across all API routes"
+        why: "Provides immediate visibility into enumeration scans or abusive clients"
+      - step: "Monitor API response latencies and database pool saturation metrics"
+        why: "Detects algorithmic complexity attacks or resource exhaustion before outage occurs"
+    long_term_fixes:
+      - step: "Implement mTLS (mutual TLS) authentication for server-to-server API integrations"
+        why: "Guarantees cryptographic verification of client identities beyond bearer tokens"
+      - step: "Deploy API Gateway threat detection with automated IP reputation scoring"
+        why: "Automatically blacklists cloud proxy networks and known scraping infrastructure"
+    references:
+      - "OWASP API Security Top 10 API4:2023 Unrestricted Resource Consumption"
+      - "MITRE ATT&CK T1499: Endpoint Denial of Service"
+
+  - id: pb_data_exfil
+    title: "Database Export, Mass Extraction & Data Exfiltration Containment"
+    severity: "critical"
+    trigger:
+      categories:
+        - "database_export"
+        - "database_access"
+        - "database_api"
+      mitre_techniques:
+        - "T1048"
+        - "T1567"
+        - "T1567.002"
+      classifications:
+        - "HIGH_RISK"
+        - "LIKELY_MALICIOUS"
+      intent:
+        - "exfiltration"
+        - "collection"
+    immediate_actions:
+      - step: "Temporarily disable mass data export endpoints and paginate queries with max limit 50"
+        why: "Prevents continued automated harvesting of large dataset dumps"
+      - step: "Rotate database cluster credentials, connection pool passwords, and read-replica secrets"
+        why: "Terminates any direct SQL client connections established with extracted credentials"
+      - step: "Enable comprehensive query logging (pg_stat_statements / slow query log) on sensitive tables"
+        why: "Identifies the exact rows, tables, and volume of records queried by the attacker"
+      - step: "Audit and catalog all data downloads and API payloads returned during the breach window"
+        why: "Establishes verified blast radius for regulatory disclosure and forensic classification"
+    before_reopening:
+      - step: "Verify query pagination enforces hard server-side upper bound limits (no limit=-1 bypass)"
+        why: "Stops attackers from requesting the entire database in a single unpaginated call"
+      - step: "Confirm database service account permissions follow strict principle of least privilege"
+        why: "Ensures web application service account cannot dump schema or access unrelated tables"
+    staged_reopen:
+      - phase: 1
+        traffic_percent: 10
+        exit_criteria: "Zero unconstrained SELECT queries observed; query duration strictly bounded"
+      - phase: 2
+        traffic_percent: 50
+        exit_criteria: "Data access audit logs match expected customer browsing volume"
+      - phase: 3
+        traffic_percent: 100
+        exit_criteria: "Full query traffic restored with Data Loss Prevention (DLP) filters active"
+    monitoring_after_restore:
+      - step: "Alert on abnormal spikes in bytes transferred or rows returned per user session"
+        why: "Flags high-volume scraping before significant data loss occurs"
+      - step: "Continuously monitor database query execution times and export job requests"
+        why: "Detects stealthy micro-exfiltration queries attempting to evade rate limits"
+    long_term_fixes:
+      - step: "Implement field-level encryption for PII, payment info, and sensitive columns at rest"
+        why: "Renders raw database dumps unreadable without application cryptographic keys"
+      - step: "Deploy database activity monitoring (DAM) with automated exfiltration anomaly detection"
+        why: "Detects unauthorized mass query patterns directly at the database engine tier"
+    references:
+      - "MITRE ATT&CK T1567: Exfiltration Over Web Service"
+      - "OWASP Top 10 A01:2021 Broken Access Control"
+
+  - id: pb_malware_ingress
+    title: "Malware Ingress, Malicious Payload Upload & Execution Isolation"
+    severity: "critical"
+    trigger:
+      categories:
+        - "malware_attempt"
+        - "malware_download"
+      mitre_techniques:
+        - "T1105"
+        - "T1204"
+        - "T1204.002"
+      classifications:
+        - "HIGH_RISK"
+        - "LIKELY_MALICIOUS"
+      intent:
+        - "execution"
+        - "initial_access"
+    immediate_actions:
+      - step: "Isolate affected host machine or container from local subnet and internal network segments"
+        why: "Prevents lateral malware propagation to adjacent database and internal application nodes"
+      - step: "Block malicious payload download URLs, remote staging IPs, and file hashes at edge firewall"
+        why: "Halts secondary stage payload drops and command-and-control beaconing"
+      - step: "Scan host persistence mechanisms including cron jobs, rc.local, systemd units, and SSH keys"
+        why: "Identifies whether attacker established persistence before detection"
+      - step: "Terminate suspicious spawned processes and rebuild host container from verified clean golden image"
+        why: "Eradicates volatile malware artifacts, rootkits, and in-memory injection payloads"
+    before_reopening:
+      - step: "Verify file upload directories have no-exec (noexec) mount options and cannot execute scripts"
+        why: "Prevents uploaded webshells or binaries from being executed via web server"
+      - step: "Verify antivirus and ClamAV / YARA engine signatures are fully updated and running on uploads"
+        why: "Ensures incoming file streams are scanned before persisting to storage"
+    staged_reopen:
+      - phase: 1
+        traffic_percent: 10
+        exit_criteria: "File upload sandbox verifies zero executable headers or script extensions permitted"
+      - phase: 2
+        traffic_percent: 50
+        exit_criteria: "Clean host image telemetry confirms zero unrecognized outbound network sockets"
+      - phase: 3
+        traffic_percent: 100
+        exit_criteria: "Full file service restored with content disarm and reconstruction (CDR) active"
+    monitoring_after_restore:
+      - step: "Monitor endpoint detection and response (EDR) agent telemetry for abnormal process spawning"
+        why: "Detects living-off-the-land binaries (LOLBins) or post-exploitation activity"
+      - step: "Continuously monitor outbound DNS queries and egress connections to unknown IP ranges"
+        why: "Identifies command-and-control (C2) beaconing attempts immediately"
+    long_term_fixes:
+      - step: "Store all user uploads in isolated object storage (S3) served through an unprivileged domain"
+        why: "Decouples uploaded content from application compute execution context"
+      - step: "Implement read-only container root filesystems with immutable infrastructure deployment"
+        why: "Makes persistence writing to /bin, /usr, or system directories impossible"
+    references:
+      - "MITRE ATT&CK T1105: Ingress Tool Transfer"
+      - "CISA Alert AA22-011A: Understanding and Mitigating Russian Cyber Threats"
+
+  - id: pb_persistence
+    title: "Persistence Mechanism Eradication & Scheduled Task Auditing"
+    severity: "high"
+    trigger:
+      categories:
+        - "scheduled_task"
+        - "persistence"
+      mitre_techniques:
+        - "T1053"
+        - "T1053.003"
+        - "T1053.005"
+      classifications:
+        - "HIGH_RISK"
+        - "LIKELY_MALICIOUS"
+      intent:
+        - "persistence"
+    immediate_actions:
+      - step: "Remove unauthorized scheduled tasks, crontab entries, systemd timers, and at jobs"
+        why: "Eliminates recurring execution triggers established by the adversary"
+      - step: "Audit system startup configurations, rc.local, shell profiles (.bashrc, .profile), and init scripts"
+        why: "Detects persistence hooks executed upon system reboot or user login"
+      - step: "Rotate all local account passwords, service account keys, and authorized_keys SSH entries"
+        why: "Closes backdoor authentication credentials created during the compromise"
+      - step: "Rebuild and redeploy compromised server instances from clean version-controlled repository image"
+        why: "Guarantees complete removal of hidden persistence hooks in deep operating system files"
+    before_reopening:
+      - step: "Perform cryptographic integrity verification of system binaries against package manager manifests"
+        why: "Validates that core utilities (cron, sshd, bash) have not been replaced with trojans"
+      - step: "Confirm authorized_keys files are immutable and managed strictly by configuration automation"
+        why: "Prevents attackers from re-injecting SSH keys before service restoration"
+    staged_reopen:
+      - phase: 1
+        traffic_percent: 25
+        exit_criteria: "Host integrity monitoring confirms zero unauthorized file changes in /etc or /var/spool"
+      - phase: 2
+        traffic_percent: 60
+        exit_criteria: "Cron daemon execution logs verified matching authorized job schedules"
+      - phase: 3
+        traffic_percent: 100
+        exit_criteria: "Full instance restored under continuous file integrity monitoring (FIM)"
+    monitoring_after_restore:
+      - step: "Enable Linux auditd rules for watching /var/spool/cron and /etc/cron* directories"
+        why: "Provides real-time audit alerts on any attempted cron modification"
+      - step: "Monitor creation of new system accounts or modifications to /etc/passwd and /etc/shadow"
+        why: "Detects attempts to maintain secondary administrative backdoors"
+    long_term_fixes:
+      - step: "Implement immutable infrastructure patterns where servers are replaced rather than updated"
+        why: "Permanently resolves server drift and persistence mechanisms upon every deployment"
+      - step: "Enforce centralized ephemeral SSH certificates with 8-hour maximum lifetime (Vault SSH CA)"
+        why: "Eliminates static authorized_keys files and long-lived server credentials"
+    references:
+      - "MITRE ATT&CK T1053: Scheduled Task/Job"
+      - "CIS Benchmark for Linux: Section 5 Access, Authentication and Authorization"
+
+  - id: pb_lateral_movement
+    title: "Lateral Movement Containment & East-West Segmentation"
+    severity: "critical"
+    trigger:
+      categories:
+        - "internal_decoy"
+        - "lateral_movement"
+      mitre_techniques:
+        - "T1021"
+        - "T1021.001"
+        - "T1021.002"
+        - "T1021.004"
+      classifications:
+        - "HIGH_RISK"
+        - "LIKELY_MALICIOUS"
+      intent:
+        - "lateral_movement"
+    immediate_actions:
+      - step: "Enforce strict micro-segmentation firewalls to isolate compromised subnet from internal VPC"
+        why: "Stops adversary from reaching adjacent database, payment, or corporate network segments"
+      - step: "Rotate all shared service credentials, Kerberos tickets, and internal database connection strings"
+        why: "Prevents reuse of cached credentials across multiple internal network hosts"
+      - step: "Review and restrict east-west firewall rules between web tiers and internal backend systems"
+        why: "Closes non-essential internal communication ports exploited during lateral traversal"
+      - step: "Revoke all internal VPN and bastion host active sessions associated with the compromised source"
+        why: "Disconnects active interactive terminal sessions held by the attacker"
+    before_reopening:
+      - step: "Verify internal network security group rules reject all traffic not explicitly whitelisted"
+        why: "Validates default-deny posture between application tiers"
+      - step: "Confirm internal decoy honeypot tripwires are listening and reporting on critical subnets"
+        why: "Ensures immediate tripwire detection if lateral probing resumes"
+    staged_reopen:
+      - phase: 1
+        traffic_percent: 15
+        exit_criteria: "Internal network flow logs confirm zero connection attempts outside whitelisted ports"
+      - phase: 2
+        traffic_percent: 50
+        exit_criteria: "Service mesh mTLS handshake success rate at 100% with zero unauthenticated drops"
+      - phase: 3
+        traffic_percent: 100
+        exit_criteria: "Full inter-service communication active with continuous flow analysis"
+    monitoring_after_restore:
+      - step: "Monitor VPC Flow Logs for rejected connection attempts between internal subnets"
+        why: "Early detection of reconnaissance against internal service boundaries"
+      - step: "Alert on abnormal internal SSH, RDP, or SMB authentication attempts between application servers"
+        why: "Identifies lateral traversal techniques attempting administrative protocol reuse"
+    long_term_fixes:
+      - step: "Deploy service mesh with strict mTLS authentication and authorization policies (Istio / Linkerd)"
+        why: "Enforces cryptographic identity verification and fine-grained authorization for every service call"
+      - step: "Implement micro-segmentation with host-level software-defined firewalls"
+        why: "Limits compromise blast radius strictly to a single isolated container"
+    references:
+      - "MITRE ATT&CK T1021: Remote Services"
+      - "NSA Cybersecurity Information: Eliminating Obsolete TLS Configurations"
+
+  - id: pb_recon_scan
+    title: "Reconnaissance, Port Scanning & Surface Discovery Mitigation"
+    severity: "low"
+    trigger:
+      categories:
+        - "port_scan"
+        - "reconnaissance"
+        - "probe"
+        - "endpoint_enumeration"
+      mitre_techniques:
+        - "T1046"
+        - "T1595"
+        - "T1595.001"
+      classifications:
+        - "NORMAL"
+        - "SUSPICIOUS"
+      intent:
+        - "reconnaissance"
+        - "discovery"
+    immediate_actions:
+      - step: "Close all unessential public network ports and remove exposed staging services at edge firewall"
+        why: "Reduces external attack surface available to scanning and fingerprinting tools"
+      - step: "Suppress server version banners and software headers (Server, X-Powered-By, technology tags)"
+        why: "Prevents automated scanners from identifying specific vulnerable library versions"
+      - step: "Deploy edge rate limiting for TCP SYN packets and rapid sequential connection attempts"
+        why: "Mitigates high-speed port scanning and automated service enumeration"
+      - step: "Divert suspicious high-frequency scanning traffic to isolated honeypot decoys"
+        why: "Consumes scanner resources while collecting adversary threat intelligence"
+    before_reopening:
+      - step: "Execute external Nmap vulnerability scan against public IP to verify only port 443 is exposed"
+        why: "Validates that no test ports or management services were inadvertently left open"
+      - step: "Verify edge HTTP headers contain zero revealing software framework signatures"
+        why: "Ensures banner reduction rules are functioning as expected"
+    staged_reopen:
+      - phase: 1
+        traffic_percent: 25
+        exit_criteria: "Verified clean edge connection logs with scanner traffic diverted to honeypot"
+      - phase: 2
+        traffic_percent: 75
+        exit_criteria: "Normal user browsing traffic unaffected by SYN rate limiting rules"
+      - phase: 3
+        traffic_percent: 100
+        exit_criteria: "Full public service operational with external perimeter monitoring active"
+    monitoring_after_restore:
+      - step: "Track rate of connection drops and port scan alerts at edge perimeter"
+        why: "Maintains situational awareness of global reconnaissance campaigns"
+      - step: "Monitor honeypot decoy connection logs for threat actor IP correlation"
+        why: "Identifies whether scanning IP addresses proceed to targeted exploitation attempts"
+    long_term_fixes:
+      - step: "Place all public entry points behind a Cloudflare / AWS CloudFront DDoS and WAF edge"
+        why: "Filters out internet-wide background scanning and malicious bot traffic before reaching origin"
+      - step: "Implement continuous external attack surface management (EASM) scanning"
+        why: "Alerts security team within minutes if a new port or test subdomain becomes exposed"
+    references:
+      - "MITRE ATT&CK T1046: Network Service Discovery"
+      - "CIS Critical Security Control 7: Continuous Vulnerability Management"
+
+  - id: pb_reattack_after_restore
+    title: "Gateway Re-Attack & Post-Restore Protection Policy"
+    severity: "critical"
+    trigger:
+      categories:
+        - "reattack"
+        - "repeated_breach"
+      mitre_techniques:
+        - "T1110"
+        - "T1565"
+        - "T1552"
+        - "T1078"
+      classifications:
+        - "LIKELY_MALICIOUS"
+      intent:
+        - "persistence"
+        - "financial_theft"
+        - "impact"
+    immediate_actions:
+      - step: "Never reopen service without root cause verified: immediately isolate gateway to fixing mode"
+        why: "Reopening a service before verifying the patch invites immediate repeat exploitation"
+      - step: "Execute verification replay to prove whether original attack payload still succeeds"
+        why: "Provides empirical cryptographic confirmation of vulnerability eradication before traffic restore"
+      - step: "Lower targeting threshold by configured percentage (WATCH_THRESHOLD_DROP) during watch window"
+        why: "Heightens security sensitivity to catch attacker retry probes at much lower event thresholds"
+      - step: "Implement canary staged traffic reopening with 5% initial slice and mandatory exit criteria"
+        why: "Contains blast radius in the event that remediation was incomplete or bypassed"
+    before_reopening:
+      - step: "Mandatory gate: execute POST /api/gateways/{id}/verify-fix and achieve 'Fix verified' verdict"
+        why: "Strict policy gate prevents premature reopening while service remains exposed"
+      - step: "Require senior security engineer sign-off and audit log confirmation of patch deployment"
+        why: "Ensures human verification and accountability before gateway status transitions to restored"
+    staged_reopen:
+      - phase: 1
+        traffic_percent: 5
+        exit_criteria: "Verification replay confirmed blocked; zero repeat targeting events over 15 minutes"
+      - phase: 2
+        traffic_percent: 25
+        exit_criteria: "Canary traffic serving with watch-mode sensitivity active and zero tripwire alerts"
+      - phase: 3
+        traffic_percent: 100
+        exit_criteria: "Full gateway restore with watch window active for WATCH_WINDOW_MIN duration"
+    monitoring_after_restore:
+      - step: "Display active WATCH MODE banner on SOC dashboard until watch window expiration"
+        why: "Maintains maximum operator vigilance during the critical post-restore vulnerability window"
+      - step: "Log and correlate any request from previously seen attacker IPs with instant priority escalation"
+        why: "Immediately intercepts returning threat actors attempting secondary exploitation"
+    long_term_fixes:
+      - step: "Incorporate the re-attack request sequence into automated CI/CD continuous regression testing"
+        why: "Guarantees future software releases cannot re-introduce the patched vulnerability"
+      - step: "Conduct root cause blameless post-mortem and publish defensive engineering lessons"
+        why: "Improves overall architectural resilience and defensive posture across all gateway services"
+    references:
+      - "NIST SP 800-61 Rev. 2: Computer Security Incident Handling Guide (Post-Incident Activity)"
+      - "Sentinel SOC Gateway Lifecycle & Hardening Verification Specification"

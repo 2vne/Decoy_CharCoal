@@ -38,6 +38,12 @@ const HP_DETAILS = {
     decoys: 'Port 502 (Modbus), 102 (S7comm), 161 (SNMP), 47808 (BACnet)',
     iconColor: '#eab308',
   },
+  decoy_app: {
+    title: 'Isolated Decoy Web Application Honeypot',
+    purpose: 'Controlled-latency deception trap with honeytoken instrumentation',
+    decoys: 'Port 8002 / :8000 (Authentication, OTP, Admin, DB & Payment honeynet traps)',
+    iconColor: '#ec4899',
+  },
 };
 
 export default function Honeypots() {

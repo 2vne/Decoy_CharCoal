@@ -270,6 +270,7 @@ class FunctionTargetEventIn(BaseModel):
     evidence: Optional[str] = ""
     confidence: Optional[float] = 1.0
     is_simulated: Optional[bool] = False
+    session_id: Optional[str] = None
     timestamp: Optional[datetime] = None
 
 
@@ -277,6 +278,7 @@ class FunctionTargetEventOut(BaseModel):
     id: int
     attacker_id: int
     src_ip: str
+    session_id: Optional[str] = None
     target_function: str
     target_endpoint: str
     attack_type: str

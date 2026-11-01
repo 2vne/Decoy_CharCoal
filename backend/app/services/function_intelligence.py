@@ -308,6 +308,7 @@ async def record_function_targeting(
     confidence: float = 1.0,
     is_simulated: bool = False,
     event_timestamp: Optional[datetime] = None,
+    session_id: Optional[str] = None,
 ) -> FunctionTargetEvent:
     """
     Persists a function-targeting incident, recalculates the attacker's
@@ -330,6 +331,7 @@ async def record_function_targeting(
         evidence=sanitize_text(evidence),
         confidence=confidence,
         is_simulated=is_simulated,
+        session_id=session_id,
         timestamp=ts,
     )
     db.add(fn_ev)
@@ -381,11 +383,14 @@ async def record_function_targeting(
             "id": fn_ev.id,
             "attacker_id": attacker.id,
             "src_ip": attacker.ip,
+            "session_id": session_id,
             "target_function": target_function,
             "function_name": FUNCTION_METADATA.get(target_function, {}).get("name", target_function),
+            "category": FUNCTION_METADATA.get(target_function, {}).get("category", "General"),
             "target_endpoint": fn_ev.target_endpoint,
             "attack_type": attack_type,
             "severity": severity,
+            "result": result,
             "attempts": attempts,
             "confidence": confidence,
             "is_simulated": is_simulated,
@@ -394,9 +399,433 @@ async def record_function_targeting(
             "function_risk_score": score,
             "function_risk_band": band,
             "explanation": breakdown["explanation"],
+            "breakdown": breakdown,
         })
     except Exception:
         pass
 
+    # Autonomous Alert Dispatch: Automatically notify PagerDuty, Resend Email, Twilio on attack
+    if attack_type != "normal_access" and (severity in ("high", "critical") or score >= 35.0):
+        try:
+            from app.services.alert_dispatcher import dispatch_attack_alert_background
+            dispatch_attack_alert_background(
+                src_ip=attacker.ip,
+                target_function=target_function,
+                target_endpoint=fn_ev.target_endpoint,
+                attack_type=attack_type,
+                severity=severity,
+                score=score,
+                evidence=fn_ev.evidence,
+                is_simulated=is_simulated,
+                session_id=session_id,
+                is_critical=(severity == "critical"),
+                category=FUNCTION_METADATA.get(target_function, {}).get("category", "Function Targeting"),
+            )
+        except Exception:
+            pass
+
     return fn_ev
+
+
+# --------------------------------------------------------------------------
+# Manual Function Intelligence Demonstration Controller
+# --------------------------------------------------------------------------
+import asyncio
+
+DEMO_ATTACKER_IP = "198.51.100.99"
+DEMO_DEFAULT_SESSION = "demo_fn_session_interactive"
+ACTIVE_DEMO_TASKS: Dict[str, asyncio.Task] = {}
+DEMO_ATTEMPT_COUNTERS: Dict[Tuple[str, str], int] = {}
+
+
+async def _get_or_create_demo_attacker(db: AsyncSession, now: datetime) -> Attacker:
+    stmt = select(Attacker).where(Attacker.ip == DEMO_ATTACKER_IP)
+    res = await db.execute(stmt)
+    atk = res.scalar_one_or_none()
+    if not atk:
+        atk = Attacker(
+            ip=DEMO_ATTACKER_IP,
+            status="active",
+            risk_score=10.0,
+            risk_band="low",
+            function_risk_score=0.0,
+            function_risk_breakdown={},
+            targeted_functions=[],
+            first_seen=now,
+            last_seen=now,
+        )
+        db.add(atk)
+        await db.flush()
+    return atk
+
+
+async def execute_demo_action(
+    db: AsyncSession,
+    action: str,
+    session_id: Optional[str] = None,
+    target_function: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Executes a controlled manual synthetic function targeting action:
+    1. 'normal': Legitimate single session access (low risk)
+    2. 'repeated': Sequential attempt bursts for same function (increasing attempts counter)
+    3. 'sensitive_probe': Probing high-impact confidential configuration/payment/admin
+    """
+    sess_id = (session_id or DEMO_DEFAULT_SESSION).strip()
+    now = datetime.now(timezone.utc)
+    attacker = await _get_or_create_demo_attacker(db, now)
+
+    if action == "normal":
+        fn = target_function or "auth_login"
+        if fn not in FUNCTION_METADATA:
+            fn = "auth_login"
+        fn_name = FUNCTION_METADATA[fn]["name"]
+        attempts = 1
+        severity = "low"
+        attack_type = "standard_access"
+        result = "authorized"
+        endpoint = f"/api/v1/{fn.replace('_', '/')}"
+        evidence = f"[Simulated Demo] Legitimate single session access to {fn_name}"
+
+        fn_ev = await record_function_targeting(
+            db=db,
+            attacker=attacker,
+            target_function=fn,
+            target_endpoint=endpoint,
+            attack_type=attack_type,
+            severity=severity,
+            result=result,
+            attempts=attempts,
+            honeypot_source="demo_console",
+            evidence=evidence,
+            confidence=1.0,
+            is_simulated=True,
+            session_id=sess_id,
+            event_timestamp=now,
+        )
+        await db.commit()
+
+        return {
+            "status": "success",
+            "action": "normal",
+            "session_id": sess_id,
+            "event_id": fn_ev.id,
+            "target_function": fn,
+            "function_name": fn_name,
+            "category": FUNCTION_METADATA[fn]["category"],
+            "attempts": attempts,
+            "severity": severity,
+            "result": result,
+            "function_risk_score": attacker.function_risk_score,
+            "function_risk_band": attacker.risk_band,
+            "is_simulated": True,
+            "explanation": attacker.function_risk_breakdown.get("explanation", ""),
+            "timestamp": now.isoformat(),
+        }
+
+    elif action == "repeated":
+        fn = target_function or "auth_login"
+        if fn not in FUNCTION_METADATA:
+            fn = "auth_login"
+        fn_name = FUNCTION_METADATA[fn]["name"]
+
+        # Increment consecutive attempt counter for this session & function
+        counter_key = (sess_id, fn)
+        current_attempts = DEMO_ATTEMPT_COUNTERS.get(counter_key, 1) + 2
+        DEMO_ATTEMPT_COUNTERS[counter_key] = current_attempts
+
+        severity = "high" if current_attempts >= 5 else "medium"
+        attack_type = "credential_stuffing_burst"
+        result = "rate_limited"
+        endpoint = f"/api/v1/{fn.replace('_', '/')}"
+        evidence = f"[Simulated Demo] Repeated automated burst ({current_attempts} attempts) targeting {fn_name}"
+
+        fn_ev = await record_function_targeting(
+            db=db,
+            attacker=attacker,
+            target_function=fn,
+            target_endpoint=endpoint,
+            attack_type=attack_type,
+            severity=severity,
+            result=result,
+            attempts=current_attempts,
+            honeypot_source="demo_console",
+            evidence=evidence,
+            confidence=1.0,
+            is_simulated=True,
+            session_id=sess_id,
+            event_timestamp=now,
+        )
+        await db.commit()
+
+        return {
+            "status": "success",
+            "action": "repeated",
+            "session_id": sess_id,
+            "event_id": fn_ev.id,
+            "target_function": fn,
+            "function_name": fn_name,
+            "category": FUNCTION_METADATA[fn]["category"],
+            "attempts": current_attempts,
+            "severity": severity,
+            "result": result,
+            "function_risk_score": attacker.function_risk_score,
+            "function_risk_band": attacker.risk_band,
+            "is_simulated": True,
+            "explanation": attacker.function_risk_breakdown.get("explanation", ""),
+            "timestamp": now.isoformat(),
+        }
+
+    elif action in ("sensitive", "sensitive_probe"):
+        fn = target_function or "secrets_env"
+        if fn not in FUNCTION_METADATA:
+            fn = "secrets_env"
+        fn_name = FUNCTION_METADATA[fn]["name"]
+
+        endpoint_map = {
+            "secrets_env": "/.env",
+            "admin_access": "/admin/privilege/escalate",
+            "payment_gateway": "/checkout/stripe/charge",
+            "database_api": "/api/v1/customers/export",
+            "auth_otp": "/api/v1/auth/otp/bypass",
+            "auth_reset": "/api/v1/auth/password/override",
+            "auth_login": "/api/v1/auth/token/steal",
+        }
+        endpoint = endpoint_map.get(fn, f"/api/v1/{fn}")
+        severity = "critical" if fn in ("secrets_env", "payment_gateway", "database_api") else "high"
+        attack_type = "sensitive_function_probe"
+        result = "blocked"
+        evidence = f"[Simulated Demo] Direct unauthorized probe targeting sensitive function {fn_name} ({endpoint})"
+
+        fn_ev = await record_function_targeting(
+            db=db,
+            attacker=attacker,
+            target_function=fn,
+            target_endpoint=endpoint,
+            attack_type=attack_type,
+            severity=severity,
+            result=result,
+            attempts=1,
+            honeypot_source="demo_console",
+            evidence=evidence,
+            confidence=1.0,
+            is_simulated=True,
+            session_id=sess_id,
+            event_timestamp=now,
+        )
+        await db.commit()
+
+        return {
+            "status": "success",
+            "action": "sensitive_probe",
+            "session_id": sess_id,
+            "event_id": fn_ev.id,
+            "target_function": fn,
+            "function_name": fn_name,
+            "category": FUNCTION_METADATA[fn]["category"],
+            "attempts": 1,
+            "severity": severity,
+            "result": result,
+            "function_risk_score": attacker.function_risk_score,
+            "function_risk_band": attacker.risk_band,
+            "is_simulated": True,
+            "explanation": attacker.function_risk_breakdown.get("explanation", ""),
+            "timestamp": now.isoformat(),
+        }
+
+    else:
+        raise ValueError(f"Unknown demonstration action: {action}")
+
+
+async def _run_recon_coroutine(session_id: str) -> None:
+    """Asynchronous multi-step generator that dispatches sequential function targeting events."""
+    from app.db import AsyncSessionLocal
+    steps = [
+        {
+            "fn": "auth_login",
+            "attempts": 2,
+            "endpoint": "/api/v1/auth/login",
+            "severity": "medium",
+            "evidence": "[Multi-Recon 1/4] Initial credential probe targeting primary authentication",
+        },
+        {
+            "fn": "auth_otp",
+            "attempts": 2,
+            "endpoint": "/api/v1/auth/otp/verify",
+            "severity": "high",
+            "evidence": "[Multi-Recon 2/4] Rapid 2FA verification bypass attempt (Synergy: Credential + 2FA triggered)",
+        },
+        {
+            "fn": "admin_access",
+            "attempts": 1,
+            "endpoint": "/admin/system/privilege",
+            "severity": "high",
+            "evidence": "[Multi-Recon 3/4] Privilege escalation probe targeting administrative endpoints (Synergy: Admin Escalation)",
+        },
+        {
+            "fn": "database_api",
+            "attempts": 1,
+            "endpoint": "/api/v1/customers/export",
+            "severity": "critical",
+            "evidence": "[Multi-Recon 4/4] Data exfiltration probe targeting customer records (Synergy: Core Data Access)",
+        },
+    ]
+
+    try:
+        for idx, step in enumerate(steps):
+            await asyncio.sleep(0.4 if idx > 0 else 0.05)
+            async with AsyncSessionLocal() as session:
+                async with session.begin():
+                    attacker = await _get_or_create_demo_attacker(session, datetime.now(timezone.utc))
+                    await record_function_targeting(
+                        db=session,
+                        attacker=attacker,
+                        target_function=step["fn"],
+                        target_endpoint=step["endpoint"],
+                        attack_type="multi_function_recon",
+                        severity=step["severity"],
+                        result="intercepted",
+                        attempts=step["attempts"],
+                        honeypot_source="demo_console",
+                        evidence=step["evidence"],
+                        confidence=1.0,
+                        is_simulated=True,
+                        session_id=session_id,
+                        event_timestamp=datetime.now(timezone.utc),
+                    )
+    except asyncio.CancelledError:
+        pass
+    finally:
+        ACTIVE_DEMO_TASKS.pop(session_id, None)
+
+
+async def execute_demo_recon_sequence(session_id: Optional[str] = None) -> Dict[str, Any]:
+    """Launches the 4-step multi-function reconnaissance sequence asynchronously."""
+    sess_id = (session_id or DEMO_DEFAULT_SESSION).strip()
+    # Cancel any currently active task for this session
+    if sess_id in ACTIVE_DEMO_TASKS and not ACTIVE_DEMO_TASKS[sess_id].done():
+        ACTIVE_DEMO_TASKS[sess_id].cancel()
+
+    task = asyncio.create_task(_run_recon_coroutine(sess_id))
+    ACTIVE_DEMO_TASKS[sess_id] = task
+
+    return {
+        "status": "started",
+        "action": "multi_recon",
+        "session_id": sess_id,
+        "steps_count": 4,
+        "sequence": ["auth_login", "auth_otp", "admin_access", "database_api"],
+        "message": "Multi-Function Reconnaissance sequence initiated. Telemetry events will stream live via WebSocket.",
+    }
+
+
+def stop_demo_simulation(session_id: Optional[str] = None) -> Dict[str, Any]:
+    """Immediately stops any ongoing multi-step reconnaissance simulation."""
+    sess_id = (session_id or DEMO_DEFAULT_SESSION).strip()
+    stopped = False
+    if sess_id in ACTIVE_DEMO_TASKS:
+        task = ACTIVE_DEMO_TASKS[sess_id]
+        if not task.done():
+            task.cancel()
+            stopped = True
+        ACTIVE_DEMO_TASKS.pop(sess_id, None)
+
+    return {
+        "status": "stopped",
+        "session_id": sess_id,
+        "was_running": stopped,
+        "message": f"Simulation stopped for session {sess_id}.",
+    }
+
+
+async def reset_demo_session(db: AsyncSession, session_id: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Resets the isolated synthetic demonstration session back to 0.
+    ONLY deletes simulated events (is_simulated = True).
+    Real observed telemetry and genuine attacker profiles are strictly preserved.
+    """
+    from sqlalchemy import delete
+    sess_id = (session_id or DEMO_DEFAULT_SESSION).strip()
+
+    # 1. Stop any active task
+    stop_demo_simulation(sess_id)
+
+    # 2. Clear attempt counter dictionary for this session
+    keys_to_remove = [k for k in DEMO_ATTEMPT_COUNTERS.keys() if k[0] == sess_id]
+    for k in keys_to_remove:
+        DEMO_ATTEMPT_COUNTERS.pop(k, None)
+
+    # 3. Delete simulated events for this demo session / synthetic IP ONLY
+    del_stmt = delete(FunctionTargetEvent).where(
+        FunctionTargetEvent.is_simulated.is_(True),
+        (FunctionTargetEvent.session_id == sess_id) | (FunctionTargetEvent.src_ip == DEMO_ATTACKER_IP),
+    )
+    res_del = await db.execute(del_stmt)
+    deleted_count = res_del.rowcount or 0
+
+    # 4. Reset synthetic attacker profile
+    stmt = select(Attacker).where(Attacker.ip == DEMO_ATTACKER_IP)
+    atk_res = await db.execute(stmt)
+    atk = atk_res.scalar_one_or_none()
+    if atk:
+        atk.function_risk_score = 0.0
+        atk.function_risk_breakdown = {}
+        atk.targeted_functions = []
+        atk.risk_band = "low"
+        atk.risk_score = 0.0
+
+    await db.commit()
+
+    # 5. Broadcast reset event to live SOC clients
+    try:
+        await broadcast("function_targeting_reset", {
+            "session_id": sess_id,
+            "src_ip": DEMO_ATTACKER_IP,
+            "deleted_events": deleted_count,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception:
+        pass
+
+    return {
+        "status": "reset_complete",
+        "session_id": sess_id,
+        "cleared_events": deleted_count,
+        "ip": DEMO_ATTACKER_IP,
+        "function_risk_score": 0.0,
+        "message": f"Isolated demo session {sess_id} reset to baseline 0. Genuine observed telemetry preserved.",
+    }
+
+
+async def get_demo_status(db: AsyncSession, session_id: Optional[str] = None) -> Dict[str, Any]:
+    """Returns the current state of the isolated demo session."""
+    sess_id = (session_id or DEMO_DEFAULT_SESSION).strip()
+    is_running = sess_id in ACTIVE_DEMO_TASKS and not ACTIVE_DEMO_TASKS[sess_id].done()
+
+    stmt = select(func.count(FunctionTargetEvent.id)).where(
+        FunctionTargetEvent.is_simulated.is_(True),
+        (FunctionTargetEvent.session_id == sess_id) | (FunctionTargetEvent.src_ip == DEMO_ATTACKER_IP),
+    )
+    count_res = await db.execute(stmt)
+    events_count = int(count_res.scalar() or 0)
+
+    stmt_atk = select(Attacker).where(Attacker.ip == DEMO_ATTACKER_IP)
+    atk_res = await db.execute(stmt_atk)
+    atk = atk_res.scalar_one_or_none()
+
+    active_counters = {
+        fn: count for (s, fn), count in DEMO_ATTEMPT_COUNTERS.items() if s == sess_id
+    }
+
+    return {
+        "session_id": sess_id,
+        "is_running": is_running,
+        "simulated_events_count": events_count,
+        "attacker_ip": DEMO_ATTACKER_IP,
+        "function_risk_score": atk.function_risk_score if atk else 0.0,
+        "function_risk_band": atk.risk_band if atk else "low",
+        "targeted_functions": atk.targeted_functions if atk else [],
+        "attempt_counters": active_counters,
+    }
+
 

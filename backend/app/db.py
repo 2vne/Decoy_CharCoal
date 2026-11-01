@@ -62,11 +62,14 @@ async def safe_migrate(conn_or_session) -> None:
                 conn.execute(sa.text("ALTER TABLE function_target_events ADD COLUMN is_simulated BOOLEAN DEFAULT 0"))
             if "confidence" not in cols:
                 conn.execute(sa.text("ALTER TABLE function_target_events ADD COLUMN confidence FLOAT DEFAULT 1.0"))
+            if "session_id" not in cols:
+                conn.execute(sa.text("ALTER TABLE function_target_events ADD COLUMN session_id VARCHAR(128)"))
 
     await conn_or_session.run_sync(_do_inspect)
 
 
 async def create_tables() -> None:
+    import app.models  # Ensure all model tables are registered on Base.metadata
     async with async_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await safe_migrate(conn)
