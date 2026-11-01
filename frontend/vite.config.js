@@ -25,15 +25,7 @@ export default defineConfig({
           }
         },
       },
-      '/gateway': {
-        target: 'http://127.0.0.1:8000',
-        changeOrigin: true,
-        bypass: (req) => {
-          if (req.headers.accept && req.headers.accept.includes('text/html')) {
-            return '/index.html';
-          }
-        },
-      },
+
     },
   },
   preview: {
@@ -58,15 +50,7 @@ export default defineConfig({
           }
         },
       },
-      '/gateway': {
-        target: 'http://127.0.0.1:8000',
-        changeOrigin: true,
-        bypass: (req) => {
-          if (req.headers.accept && req.headers.accept.includes('text/html')) {
-            return '/index.html';
-          }
-        },
-      },
+
     },
   },
 });
