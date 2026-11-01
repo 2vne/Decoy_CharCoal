@@ -190,8 +190,8 @@ export default function ReportsPage() {
                   key={asset.id}
                   className={`p-3.5 rounded border space-y-3 ${
                     isBreached
-                      ? 'bg-red-950/20 border-red-500/50 shadow-[0_0_12px_rgba(239,68,68,0.2)]'
-                      : 'bg-soc-surface border-soc-border'
+                      ? 'bg-rose-950/30 border-rose-800'
+                      : 'bg-slate-900 border-slate-800'
                   }`}
                 >
                   <div className="flex items-start justify-between">

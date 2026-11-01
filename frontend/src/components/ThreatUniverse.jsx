@@ -651,28 +651,28 @@ export default function ThreatUniverse({ height = 650, isPreview = false, onExpa
     };
   }, []);
 
-  const containerHeight = isPreview ? 400 : height;
+  const containerHeight = isPreview ? 420 : height;
 
   return (
     <div
-      className="relative w-full rounded border border-cyan-500/30 bg-black/95 overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.9)] flex"
+      className="relative w-full rounded-lg border border-slate-800 bg-slate-950 overflow-hidden shadow-md flex"
       style={{ height: `${containerHeight}px` }}
     >
       {/* Left Sidebar — Attacker List */}
-      <div className="w-52 h-full flex flex-col border-r border-soc-border bg-soc-surface/90 backdrop-blur z-10 font-mono text-xs shrink-0">
-        <div className="p-2 border-b border-soc-border space-y-1.5">
-          <div className="flex items-center justify-between text-soc-muted text-[10px] uppercase font-bold tracking-wider">
+      <div className="w-52 h-full flex flex-col border-r border-slate-800 bg-slate-900/95 backdrop-blur z-10 font-mono text-xs shrink-0">
+        <div className="p-2 border-b border-slate-800 space-y-1.5">
+          <div className="flex items-center justify-between text-slate-400 text-[10px] uppercase font-bold tracking-wider">
             <span>ORBITAL ENTITIES</span>
-            <span className="text-cyan-400 font-bold">{displayedAttackers.length}</span>
+            <span className="text-slate-200 font-bold">{displayedAttackers.length}</span>
           </div>
           <div className="relative">
-            <Search className="h-3 w-3 text-soc-muted absolute left-2 top-1/2 -translate-y-1/2" />
+            <Search className="h-3 w-3 text-slate-500 absolute left-2 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Filter IP / intent..."
-              className="w-full bg-black/60 border border-soc-border rounded pl-6 pr-2 py-0.5 text-white text-[11px] focus:outline-none focus:border-cyan-500"
+              className="w-full bg-slate-950 border border-slate-800 rounded pl-6 pr-2 py-0.5 text-white text-[11px] focus:outline-none focus:border-slate-600"
             />
           </div>
         </div>
@@ -799,28 +799,28 @@ export default function ThreatUniverse({ height = 650, isPreview = false, onExpa
 
         {/* Top-left: Title HUD */}
         <div className="absolute top-3 left-3 z-20 pointer-events-none">
-          <div className="p-2.5 rounded bg-black/80 backdrop-blur-md border border-cyan-500/40 font-mono shadow-xl">
+          <div className="p-2.5 rounded bg-slate-950/85 backdrop-blur-md border border-slate-800 font-mono shadow-md">
             <div className="flex items-center space-x-2">
-              <span className="h-2 w-2 rounded-full bg-cyan-400 animate-ping" />
-              <h1 className="text-sm font-bold tracking-widest text-white uppercase">THREAT UNIVERSE</h1>
+              <span className="h-2 w-2 rounded-full bg-slate-400" />
+              <h1 className="text-xs font-bold tracking-widest text-white uppercase">THREAT UNIVERSE</h1>
             </div>
-            <p className="text-[10px] text-cyan-300/80 uppercase tracking-wider mt-0.5">
-              CYBERSECURITY 3D COMMAND CENTER
+            <p className="text-[10px] text-slate-400 uppercase tracking-wider mt-0.5">
+              3D GRAVITATIONAL RADAR
             </p>
           </div>
         </div>
 
         {/* Top-right: Dynamic Clock */}
         <div className="absolute top-3 right-3 z-20 pointer-events-none text-right font-mono hidden sm:block">
-          <div className="p-2.5 rounded bg-black/80 backdrop-blur-md border border-cyan-500/40 shadow-xl">
-            <div className="text-xs font-bold text-white tracking-wider">LIVE THREAT MONITORING</div>
-            <div className="text-[10px] text-cyan-400 tracking-wide mt-0.5">REAL-TIME NETWORK ANALYSIS</div>
-            <div className="text-[10px] text-soc-muted mt-1 border-t border-gray-800 pt-1">{clockTime}</div>
+          <div className="p-2.5 rounded bg-slate-950/85 backdrop-blur-md border border-slate-800 shadow-md">
+            <div className="text-xs font-bold text-white tracking-wider">LIVE TELEMETRY</div>
+            <div className="text-[10px] text-slate-400 tracking-wide mt-0.5">ORBITAL GRAVITY MONITOR</div>
+            <div className="text-[10px] text-slate-500 mt-1 border-t border-slate-800 pt-1">{clockTime}</div>
           </div>
         </div>
 
         {/* Top-center: Controls Bar */}
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center space-x-1 p-1 rounded bg-black/80 backdrop-blur-md border border-cyan-500/30 text-xs font-mono shadow-xl">
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center space-x-1 p-1 rounded bg-slate-950/85 backdrop-blur-md border border-slate-800 text-xs font-mono shadow-md">
           {['all', 'critical', 'high', 'medium', 'low'].map((band) => (
             <button
               key={band}

@@ -554,8 +554,8 @@ export default function RelationshipsPage() {
               }}
               className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition ${
                 selectedEdgeType === item.id
-                  ? 'bg-cyan-950 border border-cyan-400 text-cyan-200 shadow-[0_0_8px_rgba(0,240,255,0.3)]'
-                  : 'bg-soc-surface border border-soc-border text-soc-muted hover:text-white'
+                  ? 'bg-slate-700 border border-slate-600 text-white'
+                  : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
               }`}
             >
               {item.label}
@@ -602,7 +602,7 @@ export default function RelationshipsPage() {
 
         {/* Node Hover HUD */}
         {hoveredNode && (
-          <div className="absolute top-4 right-4 z-20 p-3 rounded-lg bg-soc-surface/95 border border-cyan-500/60 shadow-[0_0_20px_rgba(0,240,255,0.25)] backdrop-blur max-w-xs space-y-1.5">
+          <div className="absolute top-4 right-4 z-20 p-3 rounded-lg bg-slate-950/95 border border-slate-700 shadow-md backdrop-blur max-w-xs space-y-1.5">
             <div className="flex items-center justify-between border-b border-soc-border pb-1">
               <span className="font-bold text-white text-xs">{hoveredNode.label}</span>
               <span className="text-[10px] uppercase font-bold text-cyan-400">

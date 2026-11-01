@@ -354,10 +354,9 @@ export default function FunctionIntelligencePage() {
 
           {/* Session & Target Metadata */}
           <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
-            <div className="px-2.5 py-1 bg-emerald-950/80 border border-emerald-500/50 rounded text-emerald-300 flex items-center gap-1.5 shadow-[0_0_8px_rgba(16,185,129,0.2)]" title="Autonomous attack alert dispatch is active">
+            <div className="px-2.5 py-1 bg-emerald-950/60 border border-emerald-800 rounded text-emerald-300 flex items-center gap-1.5" title="Autonomous attack alert dispatch is active">
               <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
               </span>
               <span className="font-bold text-[10px] tracking-wide">AUTO-ALERTS: ACTIVE</span>
             </div>

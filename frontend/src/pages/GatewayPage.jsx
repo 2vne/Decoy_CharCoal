@@ -1227,7 +1227,7 @@ export default function GatewayPage() {
                 onClick={() => handleSpeedChange('fast')}
                 className={`px-2.5 py-1 rounded text-[11px] font-bold transition-all ${
                   demoSpeed === 'fast'
-                    ? 'bg-blue-600 text-white shadow-[0_0_10px_rgba(37,99,235,0.4)]'
+                    ? 'bg-slate-700 text-white border border-slate-600'
                     : 'text-slate-400 hover:text-white'
                 }`}
                 title="Accelerated automatic demonstration (~30s total duration)"
@@ -1238,7 +1238,7 @@ export default function GatewayPage() {
                 onClick={() => handleSpeedChange('normal')}
                 className={`px-2.5 py-1 rounded text-[11px] font-bold transition-all ${
                   demoSpeed === 'normal' || demoSpeed === 'standard'
-                    ? 'bg-blue-600 text-white shadow-[0_0_10px_rgba(37,99,235,0.4)]'
+                    ? 'bg-slate-700 text-white border border-slate-600'
                     : 'text-slate-400 hover:text-white'
                 }`}
                 title="Standard automatic demonstration (~55s total duration)"
@@ -1249,7 +1249,7 @@ export default function GatewayPage() {
                 onClick={() => handleSpeedChange('step')}
                 className={`px-2.5 py-1 rounded text-[11px] font-bold transition-all ${
                   demoSpeed === 'step'
-                    ? 'bg-blue-600 text-white shadow-[0_0_10px_rgba(37,99,235,0.4)]'
+                    ? 'bg-slate-700 text-white border border-slate-600'
                     : 'text-slate-400 hover:text-white'
                 }`}
                 title="Manual Step-by-Step advancement (waits for operator to click Next Step)"
@@ -1296,7 +1296,7 @@ export default function GatewayPage() {
                 }}
                 className={`p-2.5 rounded text-left border transition-all text-xs flex flex-col justify-between ${
                   isSelected
-                    ? 'bg-blue-950/80 border-blue-500 text-white shadow-[0_0_12px_rgba(59,130,246,0.3)] ring-1 ring-blue-500'
+                    ? 'bg-slate-800 border-slate-600 text-white'
                     : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
                 }`}
               >
@@ -1360,7 +1360,7 @@ export default function GatewayPage() {
                 <button
                   onClick={handleRunScenario}
                   disabled={demoExecuting}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-xs flex items-center gap-1.5 transition-all shadow-[0_0_12px_rgba(16,185,129,0.3)] disabled:opacity-50"
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-xs flex items-center gap-1.5 transition-all disabled:opacity-50"
                   title="Execute the complete scenario automatically from first step to final step with one click"
                 >
                   <Play className="w-4 h-4 fill-current" />
@@ -1372,7 +1372,7 @@ export default function GatewayPage() {
               {demoRunning && !demoPaused && demoSpeed !== 'step' && (
                 <button
                   onClick={handlePause}
-                  className="px-3.5 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded text-xs flex items-center gap-1.5 transition-all shadow-[0_0_10px_rgba(217,119,6,0.3)]"
+                  className="px-3.5 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded text-xs flex items-center gap-1.5 transition-all"
                   title="Pause auto-advancement without cancelling in-flight request"
                 >
                   <Pause className="w-4 h-4" />
@@ -1384,7 +1384,7 @@ export default function GatewayPage() {
               {demoPaused && demoSpeed !== 'step' && (
                 <button
                   onClick={handleResume}
-                  className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded text-xs flex items-center gap-1.5 transition-all shadow-[0_0_10px_rgba(37,99,235,0.3)]"
+                  className="px-3.5 py-2 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded text-xs flex items-center gap-1.5 transition-all"
                   title="Resume automatic sequential execution from current step"
                 >
                   <Play className="w-4 h-4 fill-current" />
@@ -1442,8 +1442,8 @@ export default function GatewayPage() {
               <div
                 className={`h-full rounded-full transition-all duration-300 ${
                   demoCurrentStepIndex >= currentScenario.steps.length
-                    ? 'bg-gradient-to-r from-emerald-500 to-teal-400 shadow-[0_0_10px_rgba(16,185,129,0.5)]'
-                    : 'bg-gradient-to-r from-blue-600 via-cyan-500 to-emerald-400 shadow-[0_0_10px_rgba(6,182,212,0.5)]'
+                    ? 'bg-emerald-500'
+                    : 'bg-slate-500'
                 }`}
                 style={{
                   width: `${Math.min(100, Math.round((demoCurrentStepIndex / currentScenario.steps.length) * 100))}%`,
@@ -1488,7 +1488,7 @@ export default function GatewayPage() {
                       isCompleted
                         ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-200 shadow-sm'
                         : isActive
-                        ? 'bg-blue-950/70 border-cyan-400 text-white shadow-[0_0_12px_rgba(6,182,212,0.3)] ring-1 ring-cyan-400'
+                        ? 'bg-slate-800 border-slate-600 text-white'
                         : isPausedAtThis
                         ? 'bg-amber-950/40 border-amber-500/60 text-amber-200'
                         : 'bg-slate-900/60 border-slate-800/80 text-slate-400'
@@ -1781,7 +1781,7 @@ export default function GatewayPage() {
             <span
               className={`text-xs px-2.5 py-1 rounded font-bold border flex items-center gap-1.5 ${
                 decoyLatencyMode === 'controlled'
-                  ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/50 shadow-[0_0_10px_rgba(16,185,129,0.25)]'
+                  ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800'
                   : 'bg-slate-800 text-slate-300 border-slate-700'
               }`}
             >

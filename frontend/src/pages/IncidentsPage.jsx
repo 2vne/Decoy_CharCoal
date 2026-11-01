@@ -185,14 +185,14 @@ export default function IncidentsPage() {
             onClick={() => setActiveTab('pagerduty')}
             className={`px-3 py-1.5 rounded font-bold text-xs flex items-center space-x-1.5 transition ${
               activeTab === 'pagerduty'
-                ? 'bg-red-500/20 text-red-300 border border-red-500/50 shadow-[0_0_10px_rgba(239,68,68,0.2)]'
+                ? 'bg-rose-950/60 text-rose-300 border border-rose-800'
                 : 'text-soc-muted hover:text-white'
             }`}
           >
             <Bell className="h-3.5 w-3.5" />
             <span>PAGERDUTY ON-CALL</span>
             {openPdCount > 0 && (
-              <span className="ml-1 px-1.5 py-0.2 text-[10px] rounded-full bg-red-600 text-white font-extrabold">
+              <span className="ml-1 px-1.5 py-0.2 text-[10px] rounded-full bg-rose-600 text-white font-extrabold">
                 {openPdCount}
               </span>
             )}
@@ -202,7 +202,7 @@ export default function IncidentsPage() {
             onClick={() => setActiveTab('triage')}
             className={`px-3 py-1.5 rounded font-bold text-xs flex items-center space-x-1.5 transition ${
               activeTab === 'triage'
-                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 shadow-[0_0_10px_rgba(0,240,255,0.2)]'
+                ? 'bg-slate-800 text-slate-100 border border-slate-700'
                 : 'text-soc-muted hover:text-white'
             }`}
           >
@@ -252,12 +252,11 @@ export default function IncidentsPage() {
               {/* Action: Automated Real-Time Dispatch Status & Refresh */}
               <div className="flex items-center space-x-2">
                 <div
-                  className="px-3 py-1.5 rounded bg-emerald-950/80 border border-emerald-500/50 text-emerald-300 font-mono text-xs flex items-center space-x-2 shadow-[0_0_12px_rgba(16,185,129,0.2)]"
+                  className="px-3 py-1.5 rounded bg-emerald-950/60 border border-emerald-800 text-emerald-300 font-mono text-xs flex items-center space-x-2"
                   title="Autonomous alert dispatch is active. PagerDuty, Resend Email, and Voice Call alerts are triggered automatically whenever an attack is detected."
                 >
                   <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
                   </span>
                   <span className="font-semibold tracking-wider text-[11px]">AUTONOMOUS ATTACK DISPATCH: ACTIVE</span>
                 </div>
@@ -351,9 +350,9 @@ export default function IncidentsPage() {
                         className={`p-3 rounded border cursor-pointer transition space-y-2 ${
                           isSelected
                             ? isP1
-                              ? 'border-red-500 bg-red-950/30 shadow-[0_0_15px_rgba(239,68,68,0.2)]'
-                              : 'border-cyan-500 bg-cyan-950/30 shadow-[0_0_15px_rgba(0,240,255,0.15)]'
-                            : 'border-soc-border bg-soc-card hover:border-gray-500'
+                              ? 'border-rose-500 bg-rose-950/40 text-white'
+                              : 'border-slate-500 bg-slate-800/80 text-white'
+                            : 'border-slate-800 bg-slate-900/60 hover:border-slate-700'
                         }`}
                       >
                         <div className="flex items-center justify-between">
@@ -552,8 +551,8 @@ export default function IncidentsPage() {
                   onClick={() => setSelectedIncident(inc)}
                   className={`p-3 rounded border cursor-pointer transition space-y-2 ${
                     activeInc?.id === inc.id
-                      ? 'border-cyan-500 bg-cyan-950/30 shadow-[0_0_15px_rgba(0,240,255,0.15)]'
-                      : 'border-soc-border bg-soc-card hover:border-gray-500'
+                      ? 'border-slate-500 bg-slate-800/80 text-white'
+                      : 'border-slate-800 bg-slate-900/60 hover:border-slate-700'
                   }`}
                 >
                   <div className="flex items-center justify-between">
@@ -613,7 +612,7 @@ export default function IncidentsPage() {
                 <div className="flex items-center space-x-2">
                   <button
                     onClick={handleDownloadPdf}
-                    className="flex items-center space-x-1.5 px-3 py-1.5 rounded bg-cyan-950 border border-cyan-400 text-cyan-200 hover:bg-cyan-900 transition font-bold shadow-[0_0_10px_rgba(0,240,255,0.25)]"
+                    className="flex items-center space-x-1.5 px-3 py-1.5 rounded bg-slate-800 border border-slate-700 text-slate-200 hover:text-white transition font-medium text-xs"
                   >
                     <Download className="h-3.5 w-3.5" />
                     <span>REPORT PDF</span>
@@ -622,8 +621,8 @@ export default function IncidentsPage() {
               </div>
 
               {/* Stepper Lifecycle Controls */}
-              <div className="p-3 rounded bg-soc-surface border border-soc-border space-y-2">
-                <span className="text-[10px] text-soc-muted uppercase tracking-wider block">Incident Lifecycle Stepper</span>
+              <div className="p-3 rounded bg-slate-950 border border-slate-800 space-y-2">
+                <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Incident Lifecycle Stepper</span>
                 <div className="grid grid-cols-4 gap-2">
                   {['new', 'investigating', 'contained', 'resolved'].map((st, sIdx) => {
                     const isCurrent = activeInc.status === st;
@@ -633,8 +632,8 @@ export default function IncidentsPage() {
                         onClick={() => handleStatusChange(st)}
                         className={`py-2 px-1 rounded text-center uppercase font-bold text-[10px] transition border ${
                           isCurrent
-                            ? 'bg-cyan-500 text-black border-cyan-400 shadow-[0_0_12px_rgba(0,240,255,0.4)]'
-                            : 'bg-soc-card border-soc-border text-soc-muted hover:text-white hover:border-gray-500'
+                            ? 'bg-slate-700 text-white border-slate-600'
+                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
                         }`}
                       >
                         <span>{sIdx + 1}. {st}</span>

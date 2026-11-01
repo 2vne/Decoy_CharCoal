@@ -77,13 +77,12 @@ export default function LiveEvents() {
           <h1 className="text-xl font-bold font-mono text-white tracking-wider flex items-center space-x-2">
             <span>LIVE TELEMETRY CONSOLE</span>
             {!isPaused && (
-              <span className="relative flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-cyber-blue"></span>
+              <span className="relative flex h-2 w-2">
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
               </span>
             )}
           </h1>
-          <p className="text-xs font-mono text-soc-muted mt-0.5">
+          <p className="text-xs font-mono text-slate-400 mt-0.5">
             Real-time honeypot ingestion and automated packet normalization
           </p>
         </div>
@@ -93,8 +92,8 @@ export default function LiveEvents() {
           <button
             onClick={() => setIsPaused(!isPaused)}
             className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-mono text-xs font-bold transition border ${isPaused
-                ? 'bg-amber-950 border-amber-500 text-amber-300'
-                : 'bg-soc-card border-soc-border text-soc-muted hover:text-white hover:border-cyan-500'
+                ? 'bg-amber-950 border-amber-600/70 text-amber-300'
+                : 'bg-slate-800 border-slate-700 text-slate-300 hover:text-white hover:border-slate-600'
               }`}
           >
             {isPaused ? <Play className="h-3.5 w-3.5 fill-current" /> : <Pause className="h-3.5 w-3.5 fill-current" />}
@@ -239,29 +238,29 @@ export default function LiveEvents() {
 
                       {/* Expanded JSON Inspector Row */}
                       {isExpanded && (
-                        <tr className="bg-black/80">
-                          <td colSpan={7} className="p-4 border-t border-b border-cyan-500/30">
+                        <tr className="bg-slate-950">
+                          <td colSpan={7} className="p-4 border-t border-b border-slate-800">
                             <div className="space-y-3">
-                              <div className="flex items-center justify-between border-b border-gray-800 pb-2">
+                              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
                                 <div className="flex items-center space-x-2">
-                                  <Code className="h-4 w-4 text-cyan-400" />
+                                  <Code className="h-4 w-4 text-slate-400" />
                                   <span className="font-bold text-white text-xs">EVENT INSPECTOR ({ev.event_id})</span>
                                 </div>
                                 <div className="flex items-center space-x-1 text-[11px]">
                                   <button
                                     onClick={() => setViewMode({ ...viewMode, [ev.id]: 'normalised' })}
-                                    className={`px-2 py-0.5 rounded ${currentMode === 'normalised'
-                                        ? 'bg-cyan-500 text-black font-bold'
-                                        : 'bg-soc-card text-soc-muted'
+                                    className={`px-2.5 py-0.5 rounded ${currentMode === 'normalised'
+                                        ? 'bg-slate-700 text-white font-bold'
+                                        : 'bg-slate-800 text-slate-400 hover:text-white'
                                       }`}
                                   >
                                     NORMALISED JSON
                                   </button>
                                   <button
                                     onClick={() => setViewMode({ ...viewMode, [ev.id]: 'raw' })}
-                                    className={`px-2 py-0.5 rounded ${currentMode === 'raw'
-                                        ? 'bg-cyan-500 text-black font-bold'
-                                        : 'bg-soc-card text-soc-muted'
+                                    className={`px-2.5 py-0.5 rounded ${currentMode === 'raw'
+                                        ? 'bg-slate-700 text-white font-bold'
+                                        : 'bg-slate-800 text-slate-400 hover:text-white'
                                       }`}
                                   >
                                     RAW LOG
@@ -269,7 +268,7 @@ export default function LiveEvents() {
                                 </div>
                               </div>
 
-                              <pre className="p-3 rounded bg-black text-cyan-300 font-mono text-[11px] overflow-x-auto max-h-60 border border-gray-800 scanlines">
+                              <pre className="p-3 rounded bg-slate-900/90 text-slate-300 font-mono text-[11px] overflow-x-auto max-h-60 border border-slate-800">
                                 {JSON.stringify(
                                   currentMode === 'raw' ? ev.raw || ev : ev.normalised || ev,
                                   null,

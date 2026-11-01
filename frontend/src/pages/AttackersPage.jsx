@@ -49,25 +49,25 @@ export default function AttackersPage() {
       <div>
         <h1 className="text-xl font-bold font-mono text-white tracking-wider flex items-center space-x-2">
           <span>ATTACKER PROFILES</span>
-          <span className="text-xs px-2 py-0.5 rounded bg-cyan-950 border border-cyan-500/30 text-cyan-300 font-bold">
+          <span className="text-xs px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300 font-bold">
             {attackers.length} PROFILES
           </span>
         </h1>
-        <p className="text-xs font-mono text-soc-muted mt-0.5">
+        <p className="text-xs font-mono text-slate-400 mt-0.5">
           Per-IP behavioral dossiers, persistent fingerprints, and containment status
         </p>
       </div>
 
       {/* Search & Band Filters */}
-      <div className="p-3 rounded border border-soc-border bg-soc-card flex flex-wrap items-center gap-3 text-xs font-mono">
+      <div className="p-3 rounded border border-slate-800 bg-slate-900/90 flex flex-wrap items-center gap-3 text-xs font-mono">
         <div className="flex-1 min-w-[220px] relative">
-          <Search className="h-3.5 w-3.5 text-soc-muted absolute left-2.5 top-1/2 -translate-y-1/2" />
+          <Search className="h-3.5 w-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search IP, fingerprint, or intent..."
-            className="w-full bg-soc-surface border border-soc-border rounded pl-8 pr-3 py-1.5 text-white placeholder-soc-muted focus:outline-none focus:border-cyan-500"
+            className="w-full bg-slate-950 border border-slate-800 rounded pl-8 pr-3 py-1.5 text-white placeholder-slate-500 focus:outline-none focus:border-slate-600"
           />
         </div>
 
@@ -78,8 +78,8 @@ export default function AttackersPage() {
               onClick={() => setBandFilter(b)}
               className={`px-2.5 py-1 rounded uppercase font-medium transition ${
                 bandFilter === b
-                  ? 'bg-cyan-950 border border-cyan-400 text-cyan-200 shadow-[0_0_8px_rgba(0,240,255,0.3)]'
-                  : 'bg-soc-surface border border-soc-border text-soc-muted hover:text-white'
+                  ? 'bg-slate-700 border border-slate-600 text-white'
+                  : 'bg-slate-950 border border-slate-800 text-slate-400 hover:text-white'
               }`}
             >
               {b}
@@ -89,7 +89,7 @@ export default function AttackersPage() {
       </div>
 
       {/* Attackers Table */}
-      <div className="rounded border border-soc-border bg-soc-surface overflow-hidden shadow-2xl">
+      <div className="rounded border border-slate-800 bg-slate-900/60 overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left font-mono text-xs">
             <thead className="bg-soc-card/90 text-soc-muted border-b border-soc-border">

@@ -91,13 +91,13 @@ export default function Layout() {
         {toasts.map((t) => (
           <div
             key={t.id}
-            className={`pointer-events-auto flex items-center space-x-2 px-3 py-2 rounded shadow-2xl font-mono text-xs border backdrop-blur transition-all duration-300 animate-slide-in ${t.type === 'error'
-                ? 'bg-red-950/90 text-red-200 border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.4)]'
+            className={`pointer-events-auto flex items-center space-x-2 px-3 py-2 rounded shadow-md font-mono text-xs border backdrop-blur transition-all duration-300 animate-slide-in ${t.type === 'error'
+                ? 'bg-rose-950/90 text-rose-200 border-rose-700'
                 : t.type === 'warning'
-                  ? 'bg-amber-950/90 text-amber-200 border-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.4)]'
+                  ? 'bg-amber-950/90 text-amber-200 border-amber-700'
                   : t.type === 'success'
-                    ? 'bg-emerald-950/90 text-emerald-200 border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.4)]'
-                    : 'bg-cyan-950/90 text-cyan-200 border-cyan-500 shadow-[0_0_15px_rgba(0,240,255,0.4)]'
+                    ? 'bg-emerald-950/90 text-emerald-200 border-emerald-700'
+                    : 'bg-slate-900/90 text-slate-200 border-slate-700'
               }`}
           >
             {t.type === 'error' && <AlertOctagon className="h-4 w-4 text-red-400 flex-shrink-0" />}
@@ -111,19 +111,19 @@ export default function Layout() {
 
       {/* Demo Narrator Overlay (When Full APT Demo runs) */}
       {narrator && (
-        <div className="fixed bottom-6 right-6 z-50 p-4 rounded-lg bg-black/95 border-2 border-cyan-400 shadow-[0_0_30px_rgba(0,240,255,0.4)] backdrop-blur max-w-sm font-mono text-xs space-y-2">
-          <div className="flex items-center justify-between border-b border-cyan-500/30 pb-2">
-            <span className="flex items-center space-x-2 text-cyan-300 font-bold">
-              <span className="h-2 w-2 rounded-full bg-cyan-400 animate-ping"></span>
+        <div className="fixed bottom-6 right-6 z-50 p-4 rounded-lg bg-slate-950 border border-slate-700 shadow-xl backdrop-blur max-w-sm font-mono text-xs space-y-2">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+            <span className="flex items-center space-x-2 text-slate-300 font-bold">
+              <span className="h-2 w-2 rounded-full bg-slate-400"></span>
               <span>APT ATTACK NARRATOR</span>
             </span>
-            <button onClick={() => setNarrator(null)} className="text-soc-muted hover:text-white">
+            <button onClick={() => setNarrator(null)} className="text-slate-400 hover:text-white">
               <X className="h-4 w-4" />
             </button>
           </div>
           <div className="text-white font-bold text-sm tracking-wide">{narrator.title}</div>
-          <div className="text-cyan-200 text-[11px] leading-relaxed">{narrator.desc}</div>
-          <div className="flex items-center justify-between pt-2 border-t border-gray-800 text-[10px] text-soc-muted">
+          <div className="text-slate-300 text-[11px] leading-relaxed">{narrator.desc}</div>
+          <div className="flex items-center justify-between pt-2 border-t border-slate-800 text-[10px] text-slate-500">
             <span>STEP {narrator.step} / 5</span>
             <span className="text-emerald-400">AUTOMATED AUDIT ACTIVE</span>
           </div>
@@ -131,19 +131,18 @@ export default function Layout() {
       )}
 
       {/* Sidebar */}
-      <aside className="w-64 flex-shrink-0 flex flex-col border-r border-soc-border bg-soc-surface z-20">
+      <aside className="w-64 flex-shrink-0 flex flex-col border-r border-slate-800 bg-slate-950 z-20">
         {/* Brand Header */}
-        <div className="p-4 border-b border-soc-border">
+        <div className="p-4 border-b border-slate-800">
           <div className="flex items-center space-x-2.5">
-            <div className="h-8 w-8 rounded bg-cyan-500/10 border border-cyan-500/40 flex items-center justify-center text-cyber-blue shadow-[0_0_12px_rgba(0,240,255,0.3)]">
-              <Zap className="h-5 w-5 animate-pulse" />
+            <div className="h-8 w-8 rounded bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-200">
+              <Zap className="h-4 w-4 text-slate-300" />
             </div>
             <div>
               <div className="text-sm font-bold tracking-wider text-white font-mono">SENTINEL SOC</div>
               <div className="flex items-center space-x-1.5 mt-0.5">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400"></span>
                 </span>
                 <span className="text-[10px] uppercase font-mono tracking-wider text-emerald-400 font-medium">
                   SYSTEM ONLINE
@@ -151,7 +150,7 @@ export default function Layout() {
               </div>
             </div>
           </div>
-          <div className="text-[10px] text-soc-muted font-mono mt-2 tracking-tight">
+          <div className="text-[10px] text-slate-500 font-mono mt-2 tracking-tight">
             LIVE DECEPTION MONITORING
           </div>
         </div>
@@ -166,11 +165,11 @@ export default function Layout() {
                 key={item.to}
                 to={item.to}
                 className={`flex items-center space-x-3 px-3 py-2 rounded text-xs font-medium transition-all ${isActive
-                    ? 'bg-cyan-950/40 text-cyber-blue border border-cyan-500/30 shadow-[0_0_8px_rgba(0,240,255,0.15)]'
-                    : 'text-soc-muted hover:text-gray-200 hover:bg-soc-card/60'
+                    ? 'bg-slate-800 text-white font-semibold border border-slate-700'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-900'
                   }`}
               >
-                <Icon className={`h-4 w-4 ${isActive ? 'text-cyber-blue' : 'text-soc-muted'}`} />
+                <Icon className={`h-4 w-4 ${isActive ? 'text-slate-100' : 'text-slate-500'}`} />
                 <span>{item.label}</span>
               </NavLink>
             );
@@ -181,7 +180,7 @@ export default function Layout() {
               href="/portal"
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center justify-between px-3 py-2 rounded text-xs font-medium text-amber-300 hover:text-white bg-amber-950/30 hover:bg-amber-900/40 border border-amber-500/30 transition-all shadow-[0_0_10px_rgba(245,158,11,0.1)]"
+              className="flex items-center justify-between px-3 py-2 rounded text-xs font-medium text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800 transition-all"
               title="Launch the customer-facing SaaS Decoy Portal in a new browser tab"
             >
               <div className="flex items-center space-x-2.5">
@@ -198,7 +197,7 @@ export default function Layout() {
           <div className="relative">
             <button
               onClick={() => setSimMenuOpen(!simMenuOpen)}
-              className="w-full flex items-center justify-center space-x-2 py-2 px-3 rounded bg-red-950/40 border border-red-500/40 text-red-400 text-xs font-mono font-medium hover:bg-red-900/40 hover:border-red-400 transition shadow-[0_0_10px_rgba(239,68,68,0.2)]"
+              className="w-full flex items-center justify-center space-x-2 py-2 px-3 rounded bg-slate-900 border border-slate-700 text-rose-400 text-xs font-mono font-medium hover:bg-slate-800 transition"
             >
               <Play className="h-3.5 w-3.5 fill-current" />
               <span>LAUNCH ATTACK</span>
@@ -309,7 +308,7 @@ export default function Layout() {
         {/* Viewport Router Outlet */}
         <main className="flex-1 overflow-y-auto relative p-6">
           {backendError && (
-            <div className="mb-6 p-4 rounded border border-red-500/40 bg-red-950/40 text-red-300 font-mono text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-[0_0_15px_rgba(239,68,68,0.2)]">
+            <div className="mb-6 p-4 rounded border border-rose-800/80 bg-rose-950/30 text-rose-300 font-mono text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div className="flex items-center space-x-3">
                 <AlertTriangle className="h-5 w-5 text-red-400 shrink-0 animate-bounce" />
                 <div>
